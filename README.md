@@ -56,6 +56,7 @@ Open Data carburants
      ↙     ↘
 MapLibre   React
  carte     liste / fiche
+```
 
 ## Licence
 
