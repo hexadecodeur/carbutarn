@@ -1,75 +1,67 @@
-# React + TypeScript + Vite
+# ⛽ CarbuTarn
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Application web cartographique permettant de consulter facilement les prix des carburants dans le Tarn.
 
-Currently, two official plugins are available:
+CarbuTarn s'appuie sur les données publiques françaises pour afficher les stations-service, leurs carburants disponibles, leurs prix et différentes informations pratiques.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+> 🚧 Projet en cours de développement.
 
-## React Compiler
+## Fonctionnalités actuelles
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- 🗺️ Carte interactive des stations-service du Tarn
+- 📍 Géolocalisation de l'utilisateur
+- ⛽ Affichage des prix officiels des carburants
+- 🔄 Synchronisation entre la carte et la liste des stations visibles
+- 🎯 Sélection d'une station depuis la carte ou la liste
+- 🧾 Fiche détaillée d'une station
+- 🕐 Date de mise à jour des prix
+- 🛠️ Affichage des services disponibles
+- 📱 Interface responsive desktop / mobile
 
-## Expanding the ESLint configuration
+## Fonctionnalités prévues
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- 🔎 Recherche par ville
+- 📏 Classement des stations par distance
+- 💰 Classement par prix et type de carburant
+- 🏪 Identification des enseignes
+- ⭐ Ville favorite
+- 👥 Contributions communautaires
+- ✅ Confirmation des prix par les utilisateurs
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Stack
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- MapLibre GL JS
+- OpenStreetMap
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Données
 
+Les données relatives aux stations-service et aux prix des carburants proviennent des données publiques françaises.
+
+Les données cartographiques sont fournies par OpenStreetMap.
+
+## Architecture
+
+```text
+Open Data carburants
+        ↓
+   fuelApi.ts
+        ↓
+ normalisation
+        ↓
+    Station[]
+     ↙     ↘
+MapLibre   React
+ carte     liste / fiche
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Licence
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Ce projet est distribué sous licence MIT.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Auteur
 
-```
+Développé par Hexa Décodeur.
