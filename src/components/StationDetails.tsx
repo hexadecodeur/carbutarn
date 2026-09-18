@@ -18,14 +18,14 @@ function StationDetails({ station, onClose }: StationDetailsProps) {
   return (
     <div
       className="
-    absolute inset-x-0 bottom-0 z-30
-    h-[45%] overflow-y-auto
-    rounded-t-3xl bg-white shadow-2xl
+        absolute inset-x-0 bottom-0 z-30
+        h-[45%] overflow-y-auto
+        rounded-t-3xl bg-white shadow-2xl
 
-    md:inset-y-0 md:left-auto md:right-0
-    md:h-auto md:w-[420px] md:max-h-none
-    md:rounded-none md:border-l md:border-slate-200
-  "
+        md:inset-y-0 md:left-auto md:right-0
+        md:h-auto md:w-[420px] md:max-h-none
+        md:rounded-none md:border-l md:border-slate-200
+      "
     >
       {/* Petite poignée */}
       <div className="sticky top-0 z-10 bg-white pt-3">

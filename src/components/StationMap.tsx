@@ -5,18 +5,40 @@ import type { Station } from "../types/station"
 
 export type StationMapHandle = {
   locateUser: () => void
+
   focusStation: (stationId: string) => void
+
+  focusLocation: (
+    longitude: number,
+    latitude: number,
+    zoom?: number
+  ) => void
+
+  focusArea: (
+    longitude: number,
+    latitude: number,
+    stations: Station[]
+  ) => void
 }
 
 type StationMapProps = {
   stations: Station[]
   onVisibleStationsChange?: (stations: Station[]) => void
   onStationSelect?: (station: Station) => void
+  onUserLocationChange?: (
+    latitude: number,
+    longitude: number
+  ) => void
 }
 
 const StationMap = forwardRef<StationMapHandle, StationMapProps>(
   function StationMap(
-    { stations, onVisibleStationsChange, onStationSelect },
+    {
+      stations,
+      onVisibleStationsChange,
+      onStationSelect,
+      onUserLocationChange,
+    },
     ref,
   ) {
     const mapContainer = useRef<HTMLDivElement | null>(null)
@@ -146,7 +168,7 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
           (position) => {
             const longitude = position.coords.longitude
             const latitude = position.coords.latitude
-
+            onUserLocationChange?.(latitude, longitude)
             if (!map.current) return
 
             userMarker.current?.remove()
@@ -198,6 +220,45 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
           center: position,
           zoom: 15,
           essential: true,
+        })
+      },
+
+      focusLocation(
+        longitude: number,
+        latitude: number,
+        zoom = 13
+      ) {
+        if (!map.current) return
+
+        map.current.flyTo({
+          center: [longitude, latitude],
+          zoom,
+          essential: true,
+        })
+      },
+
+      focusArea(
+        longitude: number,
+        latitude: number,
+        stations: Station[]
+      ) {
+        if (!map.current) return
+
+        const bounds = new maplibregl.LngLatBounds()
+
+        bounds.extend([longitude, latitude])
+
+        stations.forEach((station) => {
+          bounds.extend([
+            station.longitude,
+            station.latitude,
+          ])
+        })
+
+        map.current.fitBounds(bounds, {
+          padding: 60,
+          maxZoom: 13,
+          duration: 1000,
         })
       },
     }))
