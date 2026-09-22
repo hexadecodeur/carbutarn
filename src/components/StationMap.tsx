@@ -4,8 +4,50 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import type { ListFuelType, Station } from "../types/station"
 import { getFuelPriceRange, getPriceHeatColor } from "../utils/priceColor"
 
+function readGeolocation(
+  options: PositionOptions,
+): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options)
+  })
+}
+
+/** Réseau d’abord (rapide sur mobile), puis GPS si besoin. */
+async function locateUserPosition(): Promise<GeolocationPosition> {
+  try {
+    return await readGeolocation({
+      enableHighAccuracy: false,
+      timeout: 12000,
+      maximumAge: 120_000,
+    })
+  } catch (error) {
+    if (
+      error instanceof GeolocationPositionError &&
+      error.code === error.PERMISSION_DENIED
+    ) {
+      throw error
+    }
+
+    return readGeolocation({
+      enableHighAccuracy: true,
+      timeout: 25000,
+      maximumAge: 0,
+    })
+  }
+}
+
+function geolocationErrorMessage(error: GeolocationPositionError): string {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Géolocalisation refusée. Cherche une ville ou déplace la carte."
+  }
+  if (error.code === error.TIMEOUT) {
+    return "Le GPS met trop de temps. Réessaie dehors, ou cherche une ville."
+  }
+  return "Impossible de récupérer ta position. Cherche une ville ou déplace la carte."
+}
+
 export type StationMapHandle = {
-  locateUser: () => void
+  locateUser: (options?: { silent?: boolean }) => void
 
   focusStation: (stationId: string) => void
 
@@ -196,8 +238,10 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     }, [stations, onStationSelect, selectedFuel, selectedStationId])
 
     useImperativeHandle(ref, () => ({
-      locateUser() {
+      locateUser(options) {
+        const silent = Boolean(options?.silent)
         const report = (message: string | null) => {
+          if (silent && message) return
           onLocateStatusRef.current?.(message)
         }
 
@@ -213,13 +257,14 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
           return
         }
 
-        report(null)
+        if (!silent) report("Recherche de ta position…")
 
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
+        void locateUserPosition()
+          .then((position) => {
             const longitude = position.coords.longitude
             const latitude = position.coords.latitude
             onUserLocationChangeRef.current?.(latitude, longitude)
+            if (!silent) report(null)
             if (!map.current) return
 
             userMarker.current?.remove()
@@ -235,29 +280,18 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
               zoom: 14,
               essential: true,
             })
-          },
-
-          (error) => {
+          })
+          .catch((error: unknown) => {
             console.error("Erreur de géolocalisation :", error)
-
-            if (error.code === error.PERMISSION_DENIED) {
-              report(
-                "Géolocalisation refusée. Cherche une ville ou déplace la carte.",
-              )
+            if (silent) return
+            if (error instanceof GeolocationPositionError) {
+              report(geolocationErrorMessage(error))
               return
             }
-
             report(
               "Impossible de récupérer ta position. Cherche une ville ou déplace la carte.",
             )
-          },
-
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 60000,
-          },
-        )
+          })
       },
 
       focusStation(stationId: string) {

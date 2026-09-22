@@ -22,12 +22,18 @@ type StationDetailsProps = {
 }
 
 function formatDate(date: string | null) {
-  if (!date) return "Mise à jour inconnue"
+  if (!date) return "Dernière mise à jour inconnue"
 
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(date))
+  const value = new Date(date)
+  const day = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short" }).format(
+    value,
+  )
+  const time = new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value)
+
+  return `Dernière mise à jour le ${day} à ${time}`
 }
 
 function formatOpeningHours(raw: string | null): string | null {
@@ -104,6 +110,18 @@ function StationDetails({
     }
   }, [station.id, isAuthenticated])
 
+  useEffect(() => {
+    if (!actionMessage) return
+    const timer = window.setTimeout(() => setActionMessage(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [actionMessage])
+
+  useEffect(() => {
+    if (!actionError) return
+    const timer = window.setTimeout(() => setActionError(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [actionError])
+
   function observedFor(type: FuelType) {
     return prices?.observed.find((row) => row.type === type) ?? null
   }
@@ -113,7 +131,7 @@ function StationDetails({
   ) {
     if (!observed) return false
     if (typeof observed.published === "boolean") return observed.published
-    return observed.sampleCount >= 2
+    return observed.sampleCount >= 3
   }
 
   function alreadyReported(type: FuelType) {
@@ -267,8 +285,9 @@ function StationDetails({
             Prix constatés
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Consensus des signalements (médiane 48 h). Au moins 2 avis pour
-            afficher un prix.
+            Consensus 48 h : groupe de prix à ±0,010 €/L, médiane du groupe.
+            Publication dès 3 avis (un signalement à moins de 500 m de la
+            station compte double).
           </p>
 
           {!isAuthenticated && onOpenAuth && (
@@ -329,11 +348,16 @@ function StationDetails({
                       </p>
                       <p className="mt-0.5 text-xs text-muted">
                         {isPublished(observed)
-                          ? `${observed!.sampleCount} avis · ${formatDate(observed!.computedAt)}`
+                          ? `${observed!.sampleCount} avis`
                           : observed
                             ? `${observed.sampleCount} avis — pas encore publié`
                             : "Pas encore d’avis"}
                       </p>
+                      {isPublished(observed) && observed!.computedAt && (
+                        <p className="mt-0.5 text-xs text-muted">
+                          {formatDate(observed!.computedAt)}
+                        </p>
+                      )}
                     </div>
                     <p className="font-display text-lg font-bold tabular-nums text-ink">
                       {isPublished(observed) ? (
@@ -453,7 +477,7 @@ function StationDetails({
         <p className="mt-6 border-t border-line/80 pt-4 text-xs leading-relaxed text-muted">
           Prix officiels : données publiques. Enseignes et position :
           OpenStreetMap. Prix constatés : contributions filtrées (compte, rate
-          limit, fourchette ±15 %).
+          limit, fourchette ±10 %, consensus ±0,010 €/L).
         </p>
       </div>
     </div>

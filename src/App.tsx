@@ -114,7 +114,37 @@ function App() {
     useState<ReferenceLocation | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+
+    async function bootFromUserLocation() {
+      if (!window.isSecureContext || !navigator.geolocation) return
+
+      try {
+        if (!navigator.permissions?.query) return
+        const permission = await navigator.permissions.query({
+          name: "geolocation" as PermissionName,
+        })
+        if (cancelled || permission.state !== "granted") return
+      } catch {
+        return
+      }
+
+      // Laisser le temps à la carte de se monter
+      window.setTimeout(() => {
+        if (!cancelled) mapRef.current?.locateUser({ silent: true })
+      }, 250)
+    }
+
+    void bootFromUserLocation()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!locateStatus) return
+    // Laisser le message de recherche jusqu’au succès / erreur
+    if (locateStatus.startsWith("Recherche")) return
     const timeout = window.setTimeout(() => setLocateStatus(null), 6000)
     return () => window.clearTimeout(timeout)
   }, [locateStatus])

@@ -15,7 +15,7 @@ Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · détail Phase 2 :
 - Recherche par ville (Tarn)
 - Classement distance / prix (Gazole, E10, SP98, E85)
 - Itinéraire « Y aller » (Google Maps / Apple Maps)
-- Prix constatés : connexion magic link, **Prix OK** / **Pas d’accord**, consensus serveur (médiane 48 h, anti-abus)
+- Prix constatés : connexion magic link, **Prix OK** / **Pas d’accord**, consensus serveur (groupe ±0,010 €/L, 3 avis, proche ×2)
 - Interface responsive
 
 ## Stack

@@ -13,6 +13,24 @@ const SHEET_MERGE_RATIO = 0.88
 
 const SNAP_ORDER: SheetSnap[] = ["peek", "half", "full"]
 
+const LAUNCH_KEY = "carbutarn:has-launched"
+
+function isFirstLaunch(): boolean {
+  try {
+    return localStorage.getItem(LAUNCH_KEY) !== "1"
+  } catch {
+    return false
+  }
+}
+
+function markLaunched() {
+  try {
+    localStorage.setItem(LAUNCH_KEY, "1")
+  } catch {
+    /* ignore */
+  }
+}
+
 function nearestSnap(ratio: number): SheetSnap {
   if (ratio < 0.38) return "peek"
   if (ratio < 0.72) return "half"
@@ -29,7 +47,9 @@ export function useMobileSheet() {
   const sheetHeightRef = useRef<number | null>(null)
   const suppressSheetClickRef = useRef(false)
 
-  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("half")
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>(() =>
+    typeof window !== "undefined" && isFirstLaunch() ? "full" : "half",
+  )
   const [sheetHeightPx, setSheetHeightPx] = useState<number | null>(null)
   const [layoutHeightPx, setLayoutHeightPx] = useState(
     () => (typeof window !== "undefined" ? window.innerHeight : 800),
@@ -37,6 +57,10 @@ export function useMobileSheet() {
   const [mobileHeaderHeight, setMobileHeaderHeight] = useState(136)
   const layoutRef = useRef<HTMLDivElement>(null)
   const mobileHeaderRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (isFirstLaunch()) markLaunched()
+  }, [])
 
   useEffect(() => {
     const el = layoutRef.current

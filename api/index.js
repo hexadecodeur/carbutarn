@@ -22079,12 +22079,11 @@ function distanceKm(lat1, lon1, lat2, lon2) {
   const a2 = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 6371 * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
 }
-var PRICE_TOLERANCE = 0.15;
-var GEOFENCE_KM = 0.3;
-var GEOFENCE_BOOST = 1.5;
+var PRICE_TOLERANCE = 0.1;
+var GEOFENCE_KM = 0.5;
+var GEOFENCE_BOOST = 2;
 var REPORT_COOLDOWN_MS = 2 * 60 * 60 * 1e3;
 var CONSENSUS_WINDOW_MS = 48 * 60 * 60 * 1e3;
-var MIN_SAMPLES_TO_DISPLAY = 2;
 function isPriceInTolerance(reported, official, tolerance = PRICE_TOLERANCE) {
   if (official <= 0 || reported <= 0) return false;
   const low = official * (1 - tolerance);
@@ -22101,11 +22100,16 @@ function reportWeight(options) {
 }
 
 // server/lib/consensus.ts
+var CONSENSUS_PRICE_EPSILON = 0.01;
+var MIN_CONSENSUS_WEIGHT = 3;
+function totalWeight(samples) {
+  return samples.reduce((sum, sample) => sum + sample.weight, 0);
+}
 function weightedMedian(samples) {
   if (samples.length === 0) return null;
   const expanded = [];
   for (const sample of samples) {
-    const copies = Math.max(1, Math.round(sample.weight * 2));
+    const copies = Math.max(1, Math.round(sample.weight));
     for (let i = 0; i < copies; i++) {
       expanded.push(sample.value);
     }
@@ -22116,6 +22120,40 @@ function weightedMedian(samples) {
     return (expanded[mid - 1] + expanded[mid]) / 2;
   }
   return expanded[mid];
+}
+function bestConsensusCluster(samples, epsilon = CONSENSUS_PRICE_EPSILON) {
+  if (samples.length === 0) return [];
+  const sorted = [...samples].sort((a2, b2) => a2.value - b2.value);
+  let best = [];
+  let bestWeight = -1;
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i; j < sorted.length; j++) {
+      if (sorted[j].value - sorted[i].value > epsilon + Number.EPSILON) break;
+      const window2 = sorted.slice(i, j + 1);
+      const weight = totalWeight(window2);
+      if (weight > bestWeight || weight === bestWeight && window2.length > best.length) {
+        bestWeight = weight;
+        best = window2;
+      }
+    }
+  }
+  return best;
+}
+function computeConsensus(samples, options) {
+  const cluster = bestConsensusCluster(
+    samples,
+    options?.epsilon ?? CONSENSUS_PRICE_EPSILON
+  );
+  if (cluster.length === 0) return null;
+  const price = weightedMedian(cluster);
+  if (price == null) return null;
+  const sampleCount = totalWeight(cluster);
+  const minWeight = options?.minWeight ?? MIN_CONSENSUS_WEIGHT;
+  return {
+    price,
+    sampleCount,
+    published: sampleCount >= minWeight
+  };
 }
 
 // server/types.ts
@@ -22165,8 +22203,8 @@ stationsRoutes.get("/:id/prices", async (c) => {
       price: row.price,
       sampleCount: row.sampleCount,
       computedAt: row.computedAt.toISOString(),
-      /** Affichage public dès MIN_SAMPLES_TO_DISPLAY avis */
-      published: row.sampleCount >= MIN_SAMPLES_TO_DISPLAY
+      /** Affichage public dès poids effectif ≥ MIN_CONSENSUS_WEIGHT */
+      published: row.sampleCount >= MIN_CONSENSUS_WEIGHT
     })),
     viewer: {
       authenticated: Boolean(userId),
@@ -22232,7 +22270,7 @@ stationsRoutes.post("/:id/reports", async (c) => {
   if (!agreed && price != null && !isPriceInTolerance(price, official.price)) {
     return c.json(
       {
-        error: `Prix hors fourchette (\xB115 % du prix officiel ${official.price.toFixed(3)} \u20AC)`
+        error: `Prix hors fourchette (\xB110 % du prix officiel ${official.price.toFixed(3)} \u20AC)`
       },
       422
     );
@@ -22272,19 +22310,19 @@ async function recomputeObserved(stationId, fuelType) {
     value: row.price,
     weight: row.weight
   }));
-  const median = weightedMedian(samples);
-  if (median == null) return;
+  const consensus = computeConsensus(samples);
+  if (consensus == null) return;
   await db.insert(observedPrices).values({
     stationId,
     fuelType,
-    price: median,
-    sampleCount: samples.length,
+    price: consensus.price,
+    sampleCount: consensus.sampleCount,
     computedAt: /* @__PURE__ */ new Date()
   }).onConflictDoUpdate({
     target: [observedPrices.stationId, observedPrices.fuelType],
     set: {
-      price: median,
-      sampleCount: samples.length,
+      price: consensus.price,
+      sampleCount: consensus.sampleCount,
       computedAt: /* @__PURE__ */ new Date()
     }
   });

@@ -10,12 +10,11 @@ import {
 } from "../db/schema"
 import {
   CONSENSUS_WINDOW_MS,
-  MIN_SAMPLES_TO_DISPLAY,
   REPORT_COOLDOWN_MS,
   isPriceInTolerance,
   reportWeight,
 } from "../lib/antiAbuse"
-import { weightedMedian } from "../lib/consensus"
+import { computeConsensus, MIN_CONSENSUS_WEIGHT } from "../lib/consensus"
 import { FUEL_TYPES, type AppEnv, type FuelTypeApi } from "../types"
 
 export const stationsRoutes = new Hono<AppEnv>()
@@ -77,8 +76,8 @@ stationsRoutes.get("/:id/prices", async (c) => {
       price: row.price,
       sampleCount: row.sampleCount,
       computedAt: row.computedAt.toISOString(),
-      /** Affichage public dès MIN_SAMPLES_TO_DISPLAY avis */
-      published: row.sampleCount >= MIN_SAMPLES_TO_DISPLAY,
+      /** Affichage public dès poids effectif ≥ MIN_CONSENSUS_WEIGHT */
+      published: row.sampleCount >= MIN_CONSENSUS_WEIGHT,
     })),
     viewer: {
       authenticated: Boolean(userId),
@@ -183,7 +182,7 @@ stationsRoutes.post("/:id/reports", async (c) => {
   if (!agreed && price != null && !isPriceInTolerance(price, official.price)) {
     return c.json(
       {
-        error: `Prix hors fourchette (±15 % du prix officiel ${official.price.toFixed(3)} €)`,
+        error: `Prix hors fourchette (±10 % du prix officiel ${official.price.toFixed(3)} €)`,
       },
       422,
     )
@@ -238,23 +237,23 @@ async function recomputeObserved(stationId: string, fuelType: string) {
       weight: row.weight,
     }))
 
-  const median = weightedMedian(samples)
-  if (median == null) return
+  const consensus = computeConsensus(samples)
+  if (consensus == null) return
 
   await db
     .insert(observedPrices)
     .values({
       stationId,
       fuelType,
-      price: median,
-      sampleCount: samples.length,
+      price: consensus.price,
+      sampleCount: consensus.sampleCount,
       computedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: [observedPrices.stationId, observedPrices.fuelType],
       set: {
-        price: median,
-        sampleCount: samples.length,
+        price: consensus.price,
+        sampleCount: consensus.sampleCount,
         computedAt: new Date(),
       },
     })

@@ -45,9 +45,9 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 
 1. Compte via magic link (session cookie `HttpOnly`)
 2. 1 signalement / station / carburant / 2 h / compte
-3. Fourchette ±15 % du prix officiel si correction
-4. Géofence soft : weight ↑ si GPS &lt; ~300 m (jamais bloquant)
-5. Prix affiché = médiane des reports 48 h (poids simple)
+3. Fourchette ±10 % du prix officiel si correction
+4. Géofence soft : poids ×2 si GPS ≤ 500 m de la station (jamais bloquant)
+5. Consensus 48 h : regrouper les prix à ±0,010 €/L ; publier la médiane du meilleur groupe dès poids effectif ≥ 3
 6. Réputation / modération = V2
 
 ## Endpoints

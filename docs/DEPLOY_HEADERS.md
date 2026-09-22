@@ -35,3 +35,4 @@ Notes :
 - L’API Phase 2 est **same-origin** (`/api`) → déjà couverte par `'self'`.
 - Tuiles OSM : ne pas utiliser `Referrer-Policy: no-referrer`.
 - Resend / Neon sont appelés **côté serveur** uniquement (pas dans `connect-src` navigateur).
+- Cookie de session `carbutarn_session` (HttpOnly) : cookie technique d’auth, documenté dans la politique de confidentialité — pas de bandeau cookies requis pour ce seul usage.

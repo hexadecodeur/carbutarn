@@ -14,12 +14,13 @@ export function distanceKm(
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export const PRICE_TOLERANCE = 0.15
-export const GEOFENCE_KM = 0.3
-export const GEOFENCE_BOOST = 1.5
+/** Fourchette anti-abus vs prix officiel (correction « Pas d’accord »). */
+export const PRICE_TOLERANCE = 0.1
+/** Rayon soft : signalement à ≤ 500 m de la station → poids double. */
+export const GEOFENCE_KM = 0.5
+export const GEOFENCE_BOOST = 2
 export const REPORT_COOLDOWN_MS = 2 * 60 * 60 * 1000
 export const CONSENSUS_WINDOW_MS = 48 * 60 * 60 * 1000
-export const MIN_SAMPLES_TO_DISPLAY = 2
 
 export function isPriceInTolerance(
   reported: number,

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { LEGAL_DOCS, LEGAL_LINKS, type LegalDocId } from "../content/legal"
 
 type LegalModalProps = {
@@ -8,6 +9,11 @@ type LegalModalProps = {
 
 function LegalModal({ docId, onClose, onNavigate }: LegalModalProps) {
   const doc = LEGAL_DOCS[docId]
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [docId])
 
   return (
     <div
@@ -27,7 +33,7 @@ function LegalModal({ docId, onClose, onNavigate }: LegalModalProps) {
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line/80 px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-petrol">
-              CarbuTarn
+              CarbuTarn · Documents légaux
             </p>
             <h2
               id="legal-title"
@@ -73,14 +79,20 @@ function LegalModal({ docId, onClose, onNavigate }: LegalModalProps) {
           })}
         </nav>
 
-        <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          <div className="space-y-6">
+        <div
+          ref={scrollRef}
+          className="panel-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
+        >
+          <div className="space-y-7 pb-2">
             {doc.sections.map((section) => (
-              <section key={section.heading}>
+              <section
+                key={section.heading}
+                className="border-b border-line/50 pb-6 last:border-b-0 last:pb-0"
+              >
                 <h3 className="font-display text-sm font-bold text-ink">
                   {section.heading}
                 </h3>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2.5 space-y-2.5">
                   {section.paragraphs.map((paragraph, index) => (
                     <p
                       key={`${section.heading}-${index}`}
