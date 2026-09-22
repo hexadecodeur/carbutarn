@@ -1,5 +1,41 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #12221f;
+  --color-ink-soft: #2a3d38;
+  --color-petrol: #1f5c52;
+  --color-petrol-deep: #164740;
+  --color-amber: #e09b1b;
+  --color-amber-soft: #f3c56a;
+  --color-paper: #f2f0eb;
+  --color-paper-deep: #e6e3db;
+  --color-surface: #fffcf7;
+  --color-muted: #6a756f;
+  --color-line: #d8d4cb;
+}
+
+[data-theme="dark"] {
+  --color-ink: #e7eeeb;
+  --color-ink-soft: #c2cec9;
+  --color-petrol: #4aad9c;
+  --color-petrol-deep: #3a8f80;
+  --color-amber: #e0a82e;
+  --color-amber-soft: #c49220;
+  --color-paper: #101816;
+  --color-paper-deep: #18211e;
+  --color-surface: #1a2421;
+  --color-muted: #8b9893;
+  --color-line: #2e3c37;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
 html,
 body,
 #root {
@@ -10,4 +46,45 @@ body,
 
 body {
   min-width: 320px;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background:
+    radial-gradient(120% 80% at 10% -10%, #dce8e4 0%, transparent 55%),
+    radial-gradient(90% 60% at 100% 0%, #f0e2c4 0%, transparent 45%),
+    var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(120% 80% at 10% -10%, #1a2e2a 0%, transparent 55%),
+    radial-gradient(90% 60% at 100% 0%, #2a2418 0%, transparent 45%),
+    var(--color-paper);
+}
+
+/* Carte un peu assombrie en mode sombre (tuiles OSM claires) */
+[data-theme="dark"] .maplibregl-canvas {
+  filter: brightness(0.78) contrast(1.08) saturate(0.85);
+}
+
+/* Scrollbars discrets dans les panneaux */
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.35s ease-out both;
 }

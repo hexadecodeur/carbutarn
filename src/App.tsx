@@ -1,75 +1,162 @@
 import { useEffect, useRef, useState } from "react"
+import BrandMark from "./components/BrandMark"
+import LegalModal from "./components/LegalModal"
 import StationMap, { type StationMapHandle } from "./components/StationMap"
-import { getStations } from "./services/fuelApi"
-import type { Station } from "./types/station"
-import StationDetails from "./components/StationDetails"
+import StationPanel from "./components/StationPanel"
 import { searchCities, type City } from "./services/cityApi"
+import { useFilterPrefs } from "./hooks/useFilterPrefs"
+import { useLegalDoc } from "./hooks/useLegalDoc"
+import { useMobileSheet } from "./hooks/useMobileSheet"
+import { usePanelWidth } from "./hooks/usePanelWidth"
+import { useStations } from "./hooks/useStations"
+import type { Station } from "./types/station"
+import { formatStationAddress } from "./types/station"
 import { getDistanceKm } from "./utils/distance"
+import {
+  searchBrands,
+  searchStations,
+  stationMatchesBrand,
+  type BrandMatch,
+} from "./utils/stationSearch"
+import {
+  loadRecentSearches,
+  pushRecentSearch,
+  recentFromBrand,
+  recentFromCity,
+  recentFromStation,
+  type RecentSearch,
+} from "./utils/recentSearches"
+import {
+  sortStations,
+  withDistance,
+  type ReferenceLocation,
+} from "./utils/stationSort"
 
-type ReferenceLocation = {
-  latitude: number
-  longitude: number
+function LocateIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
 }
 
 function App() {
   const mapRef = useRef<StationMapHandle>(null)
 
-  const [stations, setStations] = useState<Station[]>([])
-  const [loading, setLoading] = useState(true)
-  const [visibleStations, setVisibleStations] = useState<Station[]>([])
-  const [selectedStation, setSelectedStation] = useState<Station | null>(null)
+  const { stations, loading, error: loadError, retry: retryLoadStations } =
+    useStations()
+  const {
+    selectedFuel,
+    sortBy,
+    priceOrder,
+    handleSelectedFuelChange,
+    handleSortByChange,
+  } = useFilterPrefs()
+  const { legalDocId, openLegal, closeLegal } = useLegalDoc()
+  const {
+    panelWidth,
+    isResizingPanel,
+    onPanelResizeStart,
+    onPanelResizeMove,
+    onPanelResizeEnd,
+    resetPanelWidth,
+  } = usePanelWidth()
+  const {
+    layoutRef,
+    mobileHeaderRef,
+    mobileHeaderHeight,
+    sheetHeightPx,
+    isSheetMerged,
+    mobileSheetStyle,
+    openSheetFull,
+    openSheetHalf,
+    resetSheetToDefault,
+    onSheetPointerDown,
+    onSheetPointerMove,
+    onSheetPointerUp,
+    onSheetChromeClick,
+    onListOverscrollPullStart,
+    onListOverscrollPullMove,
+    onListOverscrollPullEnd,
+  } = useMobileSheet()
 
+  const [locateStatus, setLocateStatus] = useState<string | null>(null)
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(
+    null,
+  )
   const [searchQuery, setSearchQuery] = useState("")
   const [citySuggestions, setCitySuggestions] = useState<City[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-
+  const [brandFilter, setBrandFilter] = useState<string | null>(null)
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() =>
+    typeof window !== "undefined" ? loadRecentSearches() : [],
+  )
   const [referenceLocation, setReferenceLocation] =
     useState<ReferenceLocation | null>(null)
 
-  const [selectedFuel, setSelectedFuel] = useState<
-    "Distance" | "Gazole" | "E10" | "SP98" | "E85"
-  >("Distance")
-
   useEffect(() => {
-    getStations()
-      .then((data) => {
-        setStations(data)
-      })
-      .catch((error) => {
-        console.error("Impossible de charger les stations :", error)
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [])
+    if (!locateStatus) return
+    const timeout = window.setTimeout(() => setLocateStatus(null), 6000)
+    return () => window.clearTimeout(timeout)
+  }, [locateStatus])
 
   useEffect(() => {
     const query = searchQuery.trim()
-
-    if (query.length < 2) {
-      setCitySuggestions([])
-      return
-    }
+    if (query.length < 2) return
 
     const timeout = window.setTimeout(() => {
       searchCities(query)
         .then(setCitySuggestions)
-        .catch((error) => {
-          console.error("Recherche de commune impossible :", error)
+        .catch((cityError) => {
+          console.error("Recherche de commune impossible :", cityError)
           setCitySuggestions([])
         })
     }, 300)
 
-    return () => {
-      window.clearTimeout(timeout)
-    }
+    return () => window.clearTimeout(timeout)
   }, [searchQuery])
 
+  useEffect(() => {
+    if (!showSuggestions) return
+
+    function onPointerDown(event: globalThis.PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest("[data-search-root]")) return
+      setShowSuggestions(false)
+    }
+
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [showSuggestions])
+
+  function rememberSearch(entry: RecentSearch) {
+    setRecentSearches((current) => pushRecentSearch(current, entry))
+  }
+
+  function clearBrandFilter() {
+    const activeBrand = brandFilter
+    setBrandFilter(null)
+    if (activeBrand) {
+      setSearchQuery((current) =>
+        current.trim() === activeBrand ? "" : current,
+      )
+    }
+  }
+
   function selectCity(city: City) {
+    rememberSearch(recentFromCity(city))
     setSearchQuery(city.name)
     setCitySuggestions([])
     setShowSuggestions(false)
-    setSelectedStation(null)
+    setSelectedStationId(null)
+    setBrandFilter(null)
     setReferenceLocation({
       latitude: city.latitude,
       longitude: city.longitude,
@@ -82,115 +169,279 @@ function App() {
           city.latitude,
           city.longitude,
           station.latitude,
-          station.longitude
+          station.longitude,
         ),
       }))
       .sort((a, b) => a.distance - b.distance)[0]
 
     if (!nearestStation) {
-      mapRef.current?.focusLocation(
-        city.longitude,
-        city.latitude,
-        12
-      )
+      mapRef.current?.focusLocation(city.longitude, city.latitude, 12)
       return
     }
 
-    mapRef.current?.focusArea(
-      city.longitude,
-      city.latitude,
-      [nearestStation.station]
-    )
+    mapRef.current?.focusArea(city.longitude, city.latitude, [
+      nearestStation.station,
+    ])
   }
 
-  const sortedVisibleStations = [...visibleStations]
-    .map((station) => ({
-      ...station,
-      distance: referenceLocation
-        ? getDistanceKm(
-            referenceLocation.latitude,
-            referenceLocation.longitude,
-            station.latitude,
-            station.longitude
-          )
-        : undefined,
-    }))
-    .sort((a, b) => {
-      // Tri par distance
-      if (selectedFuel === "Distance") {
-        if (a.distance === undefined && b.distance === undefined) return 0
-        if (a.distance === undefined) return 1
-        if (b.distance === undefined) return -1
+  function selectBrand(match: BrandMatch) {
+    rememberSearch(recentFromBrand(match.brand, match.count))
+    setSearchQuery(match.brand)
+    setCitySuggestions([])
+    setShowSuggestions(false)
+    setSelectedStationId(null)
+    setBrandFilter(match.brand)
 
-        return a.distance - b.distance
-      }
+    const lon =
+      match.stations.reduce((sum, s) => sum + s.longitude, 0) /
+      match.stations.length
+    const lat =
+      match.stations.reduce((sum, s) => sum + s.latitude, 0) /
+      match.stations.length
 
-      // Tri par prix
-      const priceA = a.fuels.find(
-        (fuel) => fuel.type === selectedFuel
-      )?.price
+    setReferenceLocation({ latitude: lat, longitude: lon })
+    mapRef.current?.focusArea(lon, lat, match.stations)
+    resetSheetToDefault()
+  }
 
-      const priceB = b.fuels.find(
-        (fuel) => fuel.type === selectedFuel
-      )?.price
+  function selectStation(station: Station) {
+    setSelectedStationId(station.id)
+    openSheetFull()
+    mapRef.current?.focusStation(station.id)
+  }
 
-      // Les stations sans ce carburant vont à la fin
-      if (priceA === undefined && priceB === undefined) return 0
-      if (priceA === undefined) return 1
-      if (priceB === undefined) return -1
+  function selectStationFromSearch(station: Station) {
+    rememberSearch(recentFromStation(station))
+    setBrandFilter(null)
+    setSearchQuery(station.brand || station.name)
+    setCitySuggestions([])
+    setShowSuggestions(false)
+    selectStation(station)
+  }
 
-      return priceA - priceB
-    })
+  function selectRecent(entry: RecentSearch) {
+    if (entry.type === "city") {
+      selectCity(entry.city)
+      return
+    }
 
-  return (
-    <main className="relative h-dvh overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full flex-col">
-        {/* Header */}
-        <header className="shrink-0 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="text-2xl">⛽</div>
+    if (entry.type === "brand") {
+      const match = searchBrands(stations, entry.brand, 20)[0]
+      if (match) selectBrand(match)
+      return
+    }
 
-            <div>
-              <h1 className="text-lg font-bold leading-tight">CarbuTarn</h1>
-              <p className="text-xs text-slate-500">
-                Les prix du carburant autour de toi
-              </p>
-            </div>
-          </div>
+    const station = stations.find((s) => s.id === entry.stationId)
+    if (station) selectStationFromSearch(station)
+  }
 
-          {/* Recherche */}
-          <div className="relative mt-3">
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => {
-                setSearchQuery(event.target.value)
-                setShowSuggestions(true)
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              placeholder="Rechercher une ville..."
-              autoComplete="off"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-            />
+  function closeDetails() {
+    setSelectedStationId(null)
+    openSheetHalf()
+  }
 
-            {showSuggestions && citySuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-                {citySuggestions.map((city) => (
+  const trimmedQuery = searchQuery.trim()
+  const brandSuggestions =
+    trimmedQuery.length >= 2 ? searchBrands(stations, trimmedQuery) : []
+  const stationSuggestions =
+    trimmedQuery.length >= 2 ? searchStations(stations, trimmedQuery) : []
+  const cityResults = trimmedQuery.length >= 2 ? citySuggestions : []
+  const showRecent = trimmedQuery.length < 2 && recentSearches.length > 0
+  const hasSuggestions =
+    showRecent ||
+    brandSuggestions.length > 0 ||
+    stationSuggestions.length > 0 ||
+    cityResults.length > 0
+
+  const visibleStations = brandFilter
+    ? stations.filter((station) => stationMatchesBrand(station, brandFilter))
+    : stations
+
+  const sortedStations = sortStations(visibleStations, {
+    reference: referenceLocation,
+    sortBy,
+    selectedFuel,
+    priceOrder,
+  })
+
+  const selectedStation = selectedStationId
+    ? stations.find((s) => s.id === selectedStationId)
+    : undefined
+
+  const selectedWithDistance = selectedStation
+    ? withDistance(selectedStation, referenceLocation)
+    : null
+
+  const detailsDragHandle = (
+    <div className="flex shrink-0 justify-center border-b border-line/80 bg-surface md:hidden">
+      <button
+        type="button"
+        data-sheet-drag
+        aria-label="Redimensionner la liste"
+        className="flex w-full touch-none flex-col items-center py-2.5"
+        onClick={onSheetChromeClick}
+        onPointerDown={onSheetPointerDown}
+        onPointerMove={onSheetPointerMove}
+        onPointerUp={onSheetPointerUp}
+        onPointerCancel={onSheetPointerUp}
+      >
+        <span className="h-1 w-10 rounded-full bg-line" />
+      </button>
+    </div>
+  )
+
+  const listChromeDragProps = {
+    onPointerDown: onSheetPointerDown,
+    onPointerMove: onSheetPointerMove,
+    onPointerUp: onSheetPointerUp,
+    onPointerCancel: onSheetPointerUp,
+    onClick: onSheetChromeClick,
+  }
+
+  const listOverscrollPull = {
+    onPullStart: onListOverscrollPullStart,
+    onPullMove: onListOverscrollPullMove,
+    onPullEnd: onListOverscrollPullEnd,
+  }
+
+  const panelProps = {
+    stations: sortedStations,
+    loading,
+    error: loadError,
+    selectedFuel,
+    sortBy,
+    priceOrder,
+    onSelectedFuelChange: handleSelectedFuelChange,
+    onSortByChange: handleSortByChange,
+    onSelectStation: selectStation,
+    selectedStation: selectedWithDistance,
+    userLocation: referenceLocation,
+    onCloseDetails: closeDetails,
+    onOpenLegal: openLegal,
+    onRetry: loadError ? retryLoadStations : undefined,
+    brandFilter,
+    onClearBrandFilter: clearBrandFilter,
+  }
+
+  function renderSearchBar(inputId: string) {
+    return (
+      <div className="relative z-50" data-search-root>
+        <label className="sr-only" htmlFor={inputId}>
+          Rechercher une ville ou une enseigne
+        </label>
+        <input
+          id={inputId}
+          type="search"
+          value={searchQuery}
+          onChange={(event) => {
+            const value = event.target.value
+            setSearchQuery(value)
+            setShowSuggestions(true)
+            if (value.trim().length === 0) {
+              clearBrandFilter()
+            }
+            if (isSheetMerged && value.trim().length > 0) {
+              resetSheetToDefault()
+            }
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          placeholder="Ville ou enseigne…"
+          autoComplete="off"
+          className="w-full rounded-xl border border-line/90 bg-paper/80 px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-muted focus:border-petrol focus:bg-surface focus:ring-2 focus:ring-petrol/20"
+        />
+
+        {showSuggestions && hasSuggestions && (
+          <div className="absolute left-0 right-0 top-full z-[100] mt-1.5 max-h-[min(70vh,22rem)] overflow-y-auto rounded-xl border border-line bg-surface shadow-lg">
+            {showRecent && (
+              <div>
+                <p className="sticky top-0 bg-paper/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted backdrop-blur-sm">
+                  Récentes
+                </p>
+                {recentSearches.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => selectRecent(entry)}
+                    className="flex w-full items-center justify-between gap-3 border-b border-line/60 px-3.5 py-3 text-left text-sm transition hover:bg-paper"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold text-ink">
+                        {entry.label}
+                      </span>
+                      {entry.subtitle && (
+                        <span className="mt-0.5 block truncate text-xs text-muted">
+                          {entry.subtitle}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      {entry.type === "city"
+                        ? "Ville"
+                        : entry.type === "brand"
+                          ? "Enseigne"
+                          : "Station"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {brandSuggestions.length > 0 && (
+              <div>
+                <p className="sticky top-0 bg-paper/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted backdrop-blur-sm">
+                  Enseignes
+                </p>
+                {brandSuggestions.map((match) => (
+                  <button
+                    key={`brand-${match.brand}`}
+                    type="button"
+                    onClick={() => selectBrand(match)}
+                    className="flex w-full items-center justify-between border-b border-line/60 px-3.5 py-3 text-left text-sm transition hover:bg-paper"
+                  >
+                    <span className="font-semibold text-ink">{match.brand}</span>
+                    <span className="text-xs tabular-nums text-muted">
+                      {match.count} station{match.count > 1 ? "s" : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {stationSuggestions.length > 0 && (
+              <div>
+                <p className="sticky top-0 bg-paper/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted backdrop-blur-sm">
+                  Stations
+                </p>
+                {stationSuggestions.map((station) => (
+                  <button
+                    key={`station-${station.id}`}
+                    type="button"
+                    onClick={() => selectStationFromSearch(station)}
+                    className="flex w-full flex-col items-start gap-0.5 border-b border-line/60 px-3.5 py-3 text-left text-sm transition hover:bg-paper"
+                  >
+                    <span className="font-semibold text-ink">{station.name}</span>
+                    <span className="truncate text-xs text-muted">
+                      {formatStationAddress(station)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {cityResults.length > 0 && (
+              <div>
+                <p className="sticky top-0 bg-paper/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted backdrop-blur-sm">
+                  Villes
+                </p>
+                {cityResults.map((city) => (
                   <button
                     key={`${city.name}-${city.postalCodes.join("-")}`}
                     type="button"
                     onClick={() => selectCity(city)}
-                    className="flex w-full items-center justify-between border-b border-slate-100 px-4 py-3 text-left text-sm transition last:border-b-0 hover:bg-slate-50"
+                    className="flex w-full items-center justify-between border-b border-line/60 px-3.5 py-3 text-left text-sm transition last:border-b-0 hover:bg-paper"
                   >
-                    <div className="flex items-center gap-3">
-                      <span>📍</span>
-
-                      <span className="font-medium">
-                        {city.name}
-                      </span>
-                    </div>
-
-                    <span className="text-xs text-slate-500">
+                    <span className="font-semibold text-ink">{city.name}</span>
+                    <span className="text-xs tabular-nums text-muted">
                       {city.postalCodes.join(", ")}
                     </span>
                   </button>
@@ -198,225 +449,172 @@ function App() {
               </div>
             )}
           </div>
-        </header>
+        )}
+      </div>
+    )
+  }
 
-        {/* Carte */}
-        <section className="relative h-[42%] shrink-0 bg-slate-300">
-          <StationMap
-            ref={mapRef}
-            stations={stations}
-            onVisibleStationsChange={setVisibleStations}
-            onStationSelect={setSelectedStation}
-            onUserLocationChange={(latitude, longitude) => {
-              setReferenceLocation({
-                latitude,
-                longitude,
-              })
-
-              setSearchQuery("")
-            }}
-          />
-
-          <button
-            onClick={() => mapRef.current?.locateUser()}
-            className="absolute bottom-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl shadow-lg"
-            aria-label="Me géolocaliser"
-          >
-            ◎
-          </button>
-        </section>
-
-        {/* Partie stations */}
-        <section className="flex min-h-0 flex-1 flex-col bg-white">
-          {/* Filtres */}
-          <div className="shrink-0 border-b border-slate-100 px-4 py-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Stations à proximité</h2>
-
-              <button className="text-sm font-medium text-slate-600">
-                Trier ↕
-              </button>
-            </div>
-
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setSelectedFuel("Distance")}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium ${
-                  selectedFuel === "Distance"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-900"
-                }`}
-              >
-                Distance
-              </button>
-
-              <button
-                onClick={() => setSelectedFuel("Gazole")}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium ${
-                  selectedFuel === "Gazole"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-900"
-                }`}
-              >
-                Gazole
-              </button>
-
-              <button
-                onClick={() => setSelectedFuel("E10")}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium ${
-                  selectedFuel === "E10"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-900"
-                }`}
-              >
-                E10
-              </button>
-
-              <button
-                onClick={() => setSelectedFuel("SP98")}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium ${
-                  selectedFuel === "SP98"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-900"
-                }`}
-              >
-                SP98
-              </button>
-
-              <button
-                onClick={() => setSelectedFuel("E85")}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium ${
-                  selectedFuel === "E85"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-900"
-                }`}
-              >
-                E85
-              </button>
-            </div>
-          </div>
-
-{/* Liste */}
-<div className="min-h-0 flex-1 overflow-y-auto">
-  {loading ? (
-    <div className="flex h-32 items-center justify-center text-sm text-slate-500">
-      Chargement des stations...
-    </div>
-  ) : visibleStations.length === 0 ? (
-    <div className="flex h-32 items-center justify-center text-sm text-slate-500">
-      Aucune station dans cette zone.
-    </div>
-  ) : (
-    sortedVisibleStations.map((station) => {
-      const diesel = station.fuels.find(
-        (fuel) => fuel.type === "Gazole"
-      )
-
-      const e10 = station.fuels.find(
-        (fuel) => fuel.type === "E10"
-      )
-
-      const sp98 = station.fuels.find(
-        (fuel) => fuel.type === "SP98"
-      )
-
-      const e85 = station.fuels.find(
-        (fuel) => fuel.type === "E85"
-      )
-
-      return (
-        <button
-          key={station.id}
-          onClick={() => {
-            setSelectedStation(station)
-            mapRef.current?.focusStation(station.id)
-          }}
-          className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-4 text-left transition hover:bg-slate-50"
+  return (
+    <main className="relative flex h-dvh flex-col overflow-hidden text-ink">
+      <header
+        ref={mobileHeaderRef}
+        className={`absolute inset-x-0 top-0 z-30 md:hidden ${
+          isSheetMerged
+            ? "border-b border-line/80 bg-surface pt-[max(0.75rem,env(safe-area-inset-top))]"
+            : "px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+        }`}
+      >
+        <div
+          className={
+            isSheetMerged
+              ? "px-3 pb-3"
+              : "rounded-2xl border border-line/70 bg-surface/90 p-3 shadow-[0_8px_28px_rgba(18,34,31,0.12)] backdrop-blur-md transition-[border-radius,box-shadow,background-color] duration-200"
+          }
         >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl">
-            ⛽
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate font-semibold">
-              Station-service
-            </h3>
-
-            <p className="mt-0.5 truncate text-xs text-slate-500">
-              {station.address}
-              {station.postalCode && ` · ${station.postalCode}`}
-              {station.city && ` ${station.city}`}
-            </p>
-
-            {station.distance !== undefined && (
-              <p className="mt-1 text-xs font-medium text-slate-600">
-                {station.distance < 1
-                  ? `${Math.round(station.distance * 1000)} m`
-                  : `${station.distance.toFixed(1)} km`}
+          <div className="mb-2.5 flex items-center gap-2.5">
+            <BrandMark className="h-9 w-9 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="font-display text-lg font-extrabold leading-none tracking-tight text-ink">
+                CarbuTarn
+              </h1>
+              <p className="mt-1 truncate text-[11px] font-medium text-muted">
+                Prix carburants · Tarn
               </p>
+            </div>
+          </div>
+          {renderSearchBar("place-search-mobile")}
+        </div>
+      </header>
+
+      <header className="relative z-40 hidden shrink-0 overflow-visible border-b border-line/80 bg-surface/95 px-5 py-3 backdrop-blur-sm md:block">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-6">
+          <div className="flex items-center gap-3">
+            <BrandMark className="h-10 w-10" />
+            <div>
+              <h1 className="font-display text-xl font-extrabold leading-none tracking-tight">
+                CarbuTarn
+              </h1>
+              <p className="mt-1 text-xs font-medium text-muted">
+                Compare les prix autour de toi
+              </p>
+            </div>
+          </div>
+          <div className="relative z-50 max-w-md flex-1">
+            {renderSearchBar("place-search-desktop")}
+          </div>
+        </div>
+      </header>
+
+      <div
+        ref={layoutRef}
+        data-layout
+        className={`relative min-h-0 flex-1 ${isResizingPanel ? "select-none" : ""}`}
+      >
+        <div className="relative flex h-full min-h-0 flex-col md:flex-row">
+          <section className="absolute inset-0 z-0 md:relative md:min-w-0 md:flex-1">
+            <StationMap
+              ref={mapRef}
+              stations={visibleStations}
+              selectedFuel={selectedFuel}
+              selectedStationId={selectedStationId}
+              onStationSelect={selectStation}
+              onLocateStatus={setLocateStatus}
+              onUserLocationChange={(latitude, longitude) => {
+                setLocateStatus(null)
+                setReferenceLocation({ latitude, longitude })
+                setSearchQuery("")
+                setBrandFilter(null)
+              }}
+            />
+
+            {locateStatus && (
+              <div
+                role="status"
+                className="absolute left-3 right-14 z-10 rounded-xl border border-line/80 bg-surface/95 px-3 py-2.5 text-xs leading-relaxed text-ink-soft shadow-[0_6px_20px_rgba(18,34,31,0.14)] backdrop-blur-sm top-[8.5rem] md:left-auto md:right-5 md:top-auto md:bottom-20 md:max-w-xs"
+              >
+                <div className="flex items-start gap-2">
+                  <p className="min-w-0 flex-1">{locateStatus}</p>
+                  <button
+                    type="button"
+                    onClick={() => setLocateStatus(null)}
+                    className="shrink-0 text-muted transition hover:text-ink"
+                    aria-label="Fermer"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
             )}
 
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:flex sm:flex-wrap">
-              <span>
-                <span className="text-xs text-slate-500">
-                  Gazole{" "}
-                </span>
-                <strong>
-                  {diesel
-                    ? `${diesel.price.toFixed(3)} €`
-                    : "—"}
-                </strong>
-              </span>
+            <button
+              type="button"
+              onClick={() => mapRef.current?.locateUser()}
+              className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-2xl border border-line/70 bg-surface/95 text-petrol shadow-[0_6px_20px_rgba(18,34,31,0.14)] backdrop-blur-sm transition hover:bg-surface active:scale-95 top-[8.5rem] md:top-auto md:bottom-5 md:right-5"
+              aria-label="Me géolocaliser"
+            >
+              <LocateIcon />
+            </button>
+          </section>
 
-              <span>
-                <span className="text-xs text-slate-500">
-                  E10{" "}
-                </span>
-                <strong>
-                  {e10
-                    ? `${e10.price.toFixed(3)} €`
-                    : "—"}
-                </strong>
-              </span>
+          <button
+            type="button"
+            aria-label="Redimensionner la liste et la carte"
+            title="Glisser pour redimensionner · double-clic pour réinitialiser"
+            onPointerDown={onPanelResizeStart}
+            onPointerMove={onPanelResizeMove}
+            onPointerUp={onPanelResizeEnd}
+            onPointerCancel={onPanelResizeEnd}
+            onDoubleClick={resetPanelWidth}
+            className={`relative z-20 hidden w-1.5 shrink-0 cursor-col-resize touch-none items-stretch bg-line/70 transition hover:bg-petrol/50 md:flex ${
+              isResizingPanel ? "bg-petrol" : ""
+            }`}
+          >
+            <span className="absolute inset-y-0 -left-1 -right-1" />
+          </button>
 
-              <span>
-                <span className="text-xs text-slate-500">
-                  SP98{" "}
-                </span>
-                <strong>
-                  {sp98
-                    ? `${sp98.price.toFixed(3)} €`
-                    : "—"}
-                </strong>
-              </span>
+          <aside
+            style={{ width: panelWidth }}
+            className="relative z-10 hidden h-full shrink-0 border-l border-line/80 bg-surface md:flex md:flex-col"
+          >
+            <StationPanel {...panelProps} showFooter />
+          </aside>
 
-              <span>
-                <span className="text-xs text-slate-500">
-                  E85{" "}
-                </span>
-                <strong>
-                  {e85
-                    ? `${e85.price.toFixed(3)} €`
-                    : "—"}
-                </strong>
-              </span>
-            </div>
-          </div>
-
-          <span className="text-xl text-slate-400">
-            ›
-          </span>
-        </button>
-      )
-    })
-  )}
-</div>
-        </section>
+          <aside
+            data-sheet
+            style={mobileSheetStyle}
+            className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden bg-surface md:hidden ${
+              isSheetMerged
+                ? "rounded-none border-0 shadow-none"
+                : "rounded-t-[1.35rem] border border-line/50 border-b-0 shadow-[0_-12px_40px_rgba(18,34,31,0.14)]"
+            } ${
+              sheetHeightPx === null
+                ? "transition-[height,border-radius,box-shadow] duration-200 ease-out"
+                : "transition-none"
+            }`}
+          >
+            {isSheetMerged && (
+              <div
+                className="shrink-0"
+                style={{ height: mobileHeaderHeight }}
+                aria-hidden
+              />
+            )}
+            <StationPanel
+              {...panelProps}
+              showFooter={isSheetMerged}
+              detailsDragHandle={detailsDragHandle}
+              listChromeDragProps={listChromeDragProps}
+              listOverscrollPull={listOverscrollPull}
+            />
+          </aside>
+        </div>
       </div>
-      {selectedStation && (
-        <StationDetails
-          station={selectedStation}
-          onClose={() => setSelectedStation(null)}
+
+      {legalDocId && (
+        <LegalModal
+          docId={legalDocId}
+          onClose={closeLegal}
+          onNavigate={openLegal}
         />
       )}
     </main>

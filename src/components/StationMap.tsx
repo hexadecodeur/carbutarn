@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import * as maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
-import type { Station } from "../types/station"
+import type { ListFuelType, Station } from "../types/station"
+import { getFuelPriceRange, getPriceHeatColor } from "../utils/priceColor"
 
 export type StationMapHandle = {
   locateUser: () => void
@@ -23,21 +24,26 @@ export type StationMapHandle = {
 
 type StationMapProps = {
   stations: Station[]
-  onVisibleStationsChange?: (stations: Station[]) => void
+  selectedFuel: ListFuelType | null
+  selectedStationId?: string | null
   onStationSelect?: (station: Station) => void
   onUserLocationChange?: (
     latitude: number,
     longitude: number
   ) => void
+  /** Remplace les alert() navigateur pour les retours géoloc */
+  onLocateStatus?: (message: string | null) => void
 }
 
 const StationMap = forwardRef<StationMapHandle, StationMapProps>(
   function StationMap(
     {
       stations,
-      onVisibleStationsChange,
+      selectedFuel,
+      selectedStationId = null,
       onStationSelect,
       onUserLocationChange,
+      onLocateStatus,
     },
     ref,
   ) {
@@ -45,6 +51,18 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     const map = useRef<maplibregl.Map | null>(null)
     const userMarker = useRef<maplibregl.Marker | null>(null)
     const stationMarkers = useRef<Map<string, maplibregl.Marker>>(new Map())
+    const stationsRef = useRef(stations)
+    stationsRef.current = stations
+    const onLocateStatusRef = useRef(onLocateStatus)
+    const onUserLocationChangeRef = useRef(onUserLocationChange)
+
+    useEffect(() => {
+      onLocateStatusRef.current = onLocateStatus
+    }, [onLocateStatus])
+
+    useEffect(() => {
+      onUserLocationChangeRef.current = onUserLocationChange
+    }, [onUserLocationChange])
 
     useEffect(() => {
       if (!mapContainer.current || map.current) return
@@ -77,7 +95,13 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
 
       map.current.addControl(new maplibregl.NavigationControl(), "top-right")
 
+      const resizeObserver = new ResizeObserver(() => {
+        map.current?.resize()
+      })
+      resizeObserver.observe(mapContainer.current)
+
       return () => {
+        resizeObserver.disconnect()
         userMarker.current?.remove()
         map.current?.remove()
         map.current = null
@@ -87,47 +111,68 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     useEffect(() => {
       if (!map.current) return
 
-      const currentMap = map.current
+      const markers = stationMarkers.current
+      markers.forEach((marker) => marker.remove())
+      markers.clear()
 
-      const updateVisibleStations = () => {
-        const bounds = currentMap.getBounds()
+      const fuelPrices =
+        selectedFuel === null
+          ? []
+          : stations
+              .map(
+                (station) =>
+                  station.fuels.find((fuel) => fuel.type === selectedFuel)
+                    ?.price,
+              )
+              .filter((price): price is number => price !== undefined)
 
-        const visibleStations = stations.filter((station) =>
-          bounds.contains([station.longitude, station.latitude]),
-        )
-
-        onVisibleStationsChange?.(visibleStations)
-      }
-
-      currentMap.on("load", updateVisibleStations)
-      currentMap.on("moveend", updateVisibleStations)
-      currentMap.on("zoomend", updateVisibleStations)
-
-      // Cas où la carte est déjà chargée
-      if (currentMap.loaded()) {
-        updateVisibleStations()
-      }
-
-      return () => {
-        currentMap.off("load", updateVisibleStations)
-        currentMap.off("moveend", updateVisibleStations)
-        currentMap.off("zoomend", updateVisibleStations)
-      }
-    }, [stations, onVisibleStationsChange])
-
-    useEffect(() => {
-      if (!map.current) return
-
-      // Supprime les anciens marqueurs
-      stationMarkers.current.forEach((marker) => marker.remove())
-      stationMarkers.current.clear()
+      const priceRange = getFuelPriceRange(fuelPrices)
 
       stations.forEach((station) => {
-        const marker = new maplibregl.Marker({
-          color: "#dc2626",
-        })
-          .setLngLat([station.longitude, station.latitude])
-          .addTo(map.current!)
+        let marker: maplibregl.Marker
+        const isSelected = station.id === selectedStationId
+
+        if (selectedFuel === null) {
+          marker = new maplibregl.Marker({
+            color: isSelected ? "#e09b1b" : "#1f5c52",
+          })
+            .setLngLat([station.longitude, station.latitude])
+            .addTo(map.current!)
+        } else {
+          const fuel = station.fuels.find((f) => f.type === selectedFuel)
+
+          if (fuel && priceRange) {
+            const background = getPriceHeatColor(
+              fuel.price,
+              priceRange.min,
+              priceRange.max,
+            )
+
+            const element = document.createElement("div")
+
+            element.className = isSelected
+              ? "cursor-pointer rounded-md border-2 border-amber px-2 py-1 font-[Figtree] text-xs font-bold tracking-tight text-white shadow-sm ring-2 ring-amber/40"
+              : "cursor-pointer rounded-md border border-white/40 px-2 py-1 font-[Figtree] text-xs font-bold tracking-tight text-white shadow-sm"
+
+            element.style.backgroundColor = background
+            element.textContent = `${fuel.price.toFixed(3)} €`
+
+            marker = new maplibregl.Marker({
+              element,
+              anchor: "bottom",
+            })
+              .setLngLat([station.longitude, station.latitude])
+              .addTo(map.current!)
+          } else if (isSelected) {
+            marker = new maplibregl.Marker({
+              color: "#e09b1b",
+            })
+              .setLngLat([station.longitude, station.latitude])
+              .addTo(map.current!)
+          } else {
+            return
+          }
+        }
 
         marker.getElement().addEventListener("click", () => {
           if (!map.current) return
@@ -141,34 +186,40 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
           })
         })
 
-        stationMarkers.current.set(station.id, marker)
+        markers.set(station.id, marker)
       })
 
       return () => {
-        stationMarkers.current.forEach((marker) => marker.remove())
-        stationMarkers.current.clear()
+        markers.forEach((marker) => marker.remove())
+        markers.clear()
       }
-    }, [stations, onStationSelect])
+    }, [stations, onStationSelect, selectedFuel, selectedStationId])
 
     useImperativeHandle(ref, () => ({
       locateUser() {
+        const report = (message: string | null) => {
+          onLocateStatusRef.current?.(message)
+        }
+
         if (!window.isSecureContext) {
-          alert(
-            "La géolocalisation nécessite une connexion HTTPS. Elle sera disponible sur la version en ligne de CarbuTarn.",
+          report(
+            "La géolocalisation nécessite HTTPS. Elle sera dispo sur la version en ligne.",
           )
           return
         }
 
         if (!navigator.geolocation) {
-          alert("La géolocalisation n'est pas disponible sur cet appareil.")
+          report("La géolocalisation n’est pas disponible sur cet appareil.")
           return
         }
+
+        report(null)
 
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const longitude = position.coords.longitude
             const latitude = position.coords.latitude
-            onUserLocationChange?.(latitude, longitude)
+            onUserLocationChangeRef.current?.(latitude, longitude)
             if (!map.current) return
 
             userMarker.current?.remove()
@@ -190,14 +241,14 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
             console.error("Erreur de géolocalisation :", error)
 
             if (error.code === error.PERMISSION_DENIED) {
-              alert(
-                "La géolocalisation a été refusée. La carte reste centrée sur Albi.",
+              report(
+                "Géolocalisation refusée. Cherche une ville ou déplace la carte.",
               )
               return
             }
 
-            alert(
-              "Impossible de récupérer ta position. La carte reste centrée sur Albi.",
+            report(
+              "Impossible de récupérer ta position. Cherche une ville ou déplace la carte.",
             )
           },
 
@@ -210,14 +261,23 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
       },
 
       focusStation(stationId: string) {
+        if (!map.current) return
+
         const marker = stationMarkers.current.get(stationId)
+        if (marker) {
+          map.current.flyTo({
+            center: marker.getLngLat(),
+            zoom: 15,
+            essential: true,
+          })
+          return
+        }
 
-        if (!marker || !map.current) return
-
-        const position = marker.getLngLat()
+        const station = stationsRef.current.find((s) => s.id === stationId)
+        if (!station) return
 
         map.current.flyTo({
-          center: position,
+          center: [station.longitude, station.latitude],
           zoom: 15,
           essential: true,
         })

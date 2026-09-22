@@ -1,11 +1,12 @@
 import type { FuelPrice, FuelType, Station } from "../types/station"
+import { getStationDisplayName } from "../types/station"
 
 const API_URL =
   "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records"
 
 type ApiStation = {
   id: number
-  address: string | null
+  adresse: string | null
   cp: string | null
   ville?: string | null
   code_departement: string
@@ -35,6 +36,7 @@ type ApiStation = {
 
   services_service?: string[] | null
   horaires?: string | null
+  horaires_automate_24_24?: string | null
 }
 
 type ApiResponse = {
@@ -69,32 +71,40 @@ function normalizeStation(station: ApiStation): Station | null {
   addFuel(fuels, "E85", station.e85_prix, station.e85_maj)
   addFuel(fuels, "GPLc", station.gplc_prix, station.gplc_maj)
 
+  const address = station.adresse?.trim() || "Adresse inconnue"
+  const city = station.ville?.trim() ?? ""
+  const brand = null
+
   return {
     id: String(station.id),
 
     latitude: station.geom.lat,
     longitude: station.geom.lon,
 
-    address: station.address ?? "Adresse inconnue",
-    city: station.ville ?? "",
+    brand,
+    name: getStationDisplayName({ brand, name: "", address, city }),
+
+    address,
+    city,
     postalCode: station.cp ?? "",
 
     fuels,
 
     services: station.services_service ?? [],
     openingHours: station.horaires ?? null,
+    is24h:
+      station.horaires_automate_24_24 === "Oui" ||
+      station.horaires_automate_24_24 === "1",
   }
 }
 
-export async function getStations(): Promise<Station[]> {
-  console.log("Chargement des stations du Tarn...")
-
+export async function getStations(signal?: AbortSignal): Promise<Station[]> {
   const params = new URLSearchParams({
     where: 'code_departement="81"',
     limit: "100",
   })
 
-  const response = await fetch(`${API_URL}?${params}`)
+  const response = await fetch(`${API_URL}?${params}`, { signal })
 
   if (!response.ok) {
     throw new Error(
@@ -104,24 +114,7 @@ export async function getStations(): Promise<Station[]> {
 
   const data: ApiResponse = await response.json()
 
-  const stations = data.results
+  return data.results
     .map(normalizeStation)
     .filter((station): station is Station => station !== null)
-
-  console.log(`${stations.length} stations du Tarn chargées`)
-  console.log("Première station normalisée :", stations[0])
-  console.table(
-    stations.map((station) => ({
-      id: station.id,
-      ville: station.city,
-      cp: station.postalCode,
-      adresse: station.address,
-      gazole: station.fuels.find((f) => f.type === "Gazole")?.price,
-      e10: station.fuels.find((f) => f.type === "E10")?.price,
-      latitude: station.latitude,
-      longitude: station.longitude,
-    })),
-  )
-
-  return stations
 }

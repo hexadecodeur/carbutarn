@@ -24,6 +24,7 @@ export async function searchCities(
 
   const params = new URLSearchParams({
     nom: trimmedQuery,
+    codeDepartement: "81",
     fields: "nom,codesPostaux,centre",
     boost: "population",
     limit: "8",
