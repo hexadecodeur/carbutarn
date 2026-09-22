@@ -4,9 +4,9 @@ Application web cartographique pour consulter les prix des carburants dans le Ta
 
 CarbuTarn s’appuie sur les données publiques françaises (prix officiels) et OpenStreetMap (enseignes) pour afficher les stations-service, leurs carburants, leurs prix et un itinéraire vers la station.
 
-> Projet en cours de développement. Le mode participatif (prix constatés) est prévu en Phase 2 — voir [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md).
+> Projet en cours de développement. Phase 2 (prix participatifs) : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md).
 >
-> En-têtes HTTP recommandés pour la prod : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md).
+> En-têtes / déploiement Vercel : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md).
 
 ## Fonctionnalités actuelles
 
@@ -24,14 +24,15 @@ CarbuTarn s’appuie sur les données publiques françaises (prix officiels) et 
 
 ## Fonctionnalités prévues (Phase 2)
 
-- Prix constatés par les utilisateurs (à côté des prix officiels)
+- Prix constatés (magic link + consensus serveur)
 - Confirmation / désaccord + rectification
-- Anti-abus serveur (comptes, rate limit, consensus, géofence soft)
+- Anti-abus (rate limit, fourchette, géofence soft)
 
 ## Stack
 
-- React · TypeScript · Vite · Tailwind CSS
-- MapLibre GL JS · OpenStreetMap
+- **Front** : React · TypeScript · Vite · Tailwind · MapLibre
+- **API (Phase 2)** : Hono sur Vercel · Neon Postgres · Resend (magic link)
+- **Hébergement** : Vercel
 
 ## Données
 
@@ -44,18 +45,38 @@ CarbuTarn s’appuie sur les données publiques françaises (prix officiels) et 
 ## Architecture
 
 ```text
-Open Data carburants ──► fuelApi.ts ──┐
-                                      ├──► stationsApi.ts ──► Station[] ──► MapLibre + liste / fiche
-Overpass (enseignes) ──► osmBrands.ts ─┘
-geo.api.gouv.fr ───────► cityApi.ts ──► recherche ville
+Open Data ──► fuelApi.ts (front, lecture directe Phase 1)
+         └─► cron /api/cron/sync-official ──► Neon (Phase 2)
+
+Overpass ──► osmBrands.ts
+geo.api   ──► cityApi.ts
+
+Front ──► /api/* (Hono) ──► auth magic link · reports · observed prices
 ```
 
 ## Développement
 
 ```bash
 pnpm install
-pnpm dev
+cp .env.example .env.local   # Neon + Resend + secrets
+pnpm db:push                 # schéma Postgres
+pnpm dev:api                 # API http://localhost:8787
+pnpm dev                     # Vite (proxy /api → :8787)
 ```
+
+Sync manuelle Open Data → Neon :
+
+```bash
+pnpm sync:official
+```
+
+## Déploiement Vercel
+
+1. Importer le repo sur Vercel
+2. Ajouter les variables de `.env.example`
+3. Brancher une base Neon (marketplace Vercel)
+4. Domaine vérifié Resend pour `EMAIL_FROM`
+5. Premier deploy puis `GET /api/cron/sync-official` (ou attendre le cron 6 h)
 
 ## Licence
 

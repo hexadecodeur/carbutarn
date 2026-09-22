@@ -1,12 +1,24 @@
 import { LEGAL_LINKS, type LegalDocId } from "../content/legal"
 import ThemeSwitch from "./ThemeSwitch"
+import type { AuthUser } from "../hooks/useAuth"
 
 type AppFooterProps = {
   onOpen: (id: LegalDocId) => void
   compact?: boolean
+  user?: AuthUser | null
+  authLoading?: boolean
+  onOpenAuth?: () => void
+  onLogout?: () => void
 }
 
-function AppFooter({ onOpen, compact = false }: AppFooterProps) {
+function AppFooter({
+  onOpen,
+  compact = false,
+  user = null,
+  authLoading = false,
+  onOpenAuth,
+  onLogout,
+}: AppFooterProps) {
   return (
     <footer
       className={`shrink-0 border-t border-line/80 bg-paper/40 ${
@@ -36,7 +48,42 @@ function AppFooter({ onOpen, compact = false }: AppFooterProps) {
           ))}
         </nav>
 
-        <ThemeSwitch />
+        <div className="flex shrink-0 items-center gap-2">
+          {onOpenAuth && (
+            <div className="flex max-w-[10rem] items-center gap-1.5 sm:max-w-[14rem]">
+              {authLoading ? (
+                <span className="text-[10px] text-muted">…</span>
+              ) : user ? (
+                <>
+                  <span
+                    className="truncate text-[10px] font-medium text-ink-soft"
+                    title={user.email}
+                  >
+                    {user.email}
+                  </span>
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={onLogout}
+                      className="shrink-0 text-[10px] font-semibold text-muted transition hover:text-petrol"
+                    >
+                      Sortir
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  className="text-[10px] font-semibold text-petrol transition hover:text-petrol-deep"
+                >
+                  Se connecter
+                </button>
+              )}
+            </div>
+          )}
+          <ThemeSwitch />
+        </div>
       </div>
 
       {!compact && (

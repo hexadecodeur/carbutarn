@@ -1,6 +1,12 @@
-import type { Station } from "../types/station"
+import { useEffect, useState, type FormEvent } from "react"
+import type { FuelType, Station } from "../types/station"
 import { formatStationAddress } from "../types/station"
 import { openDirections } from "../utils/directions"
+import {
+  fetchStationPrices,
+  submitReport,
+  type StationPricesResponse,
+} from "../services/participatoryApi"
 
 type UserLocation = {
   latitude: number
@@ -11,6 +17,8 @@ type StationDetailsProps = {
   station: Station
   userLocation?: UserLocation | null
   onClose: () => void
+  isAuthenticated?: boolean
+  onOpenAuth?: () => void
 }
 
 function formatDate(date: string | null) {
@@ -38,9 +46,146 @@ function StationDetails({
   station,
   userLocation = null,
   onClose,
+  isAuthenticated = false,
+  onOpenAuth,
 }: StationDetailsProps) {
   const addressLine = formatStationAddress(station)
   const hoursLabel = formatOpeningHours(station.openingHours)
+
+  const [prices, setPrices] = useState<StationPricesResponse | null>(null)
+  const [pricesLoading, setPricesLoading] = useState(true)
+  const [pricesError, setPricesError] = useState<string | null>(null)
+  const [busyFuel, setBusyFuel] = useState<FuelType | null>(null)
+  const [correctingFuel, setCorrectingFuel] = useState<FuelType | null>(null)
+  const [draftPrice, setDraftPrice] = useState("")
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function loadPrices() {
+    setPricesLoading(true)
+    setPricesError(null)
+    try {
+      const data = await fetchStationPrices(station.id)
+      setPrices(data)
+    } catch (error) {
+      console.error("Prix participatifs indisponibles :", error)
+      setPricesError(
+        error instanceof Error ? error.message : "Chargement impossible",
+      )
+    } finally {
+      setPricesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setPricesLoading(true)
+      setPricesError(null)
+      try {
+        const data = await fetchStationPrices(station.id)
+        if (!cancelled) setPrices(data)
+      } catch (error) {
+        console.error("Prix participatifs indisponibles :", error)
+        if (!cancelled) {
+          setPricesError(
+            error instanceof Error ? error.message : "Chargement impossible",
+          )
+        }
+      } finally {
+        if (!cancelled) setPricesLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [station.id, isAuthenticated])
+
+  function observedFor(type: FuelType) {
+    return prices?.observed.find((row) => row.type === type) ?? null
+  }
+
+  function isPublished(
+    observed: StationPricesResponse["observed"][number] | null,
+  ) {
+    if (!observed) return false
+    if (typeof observed.published === "boolean") return observed.published
+    return observed.sampleCount >= 2
+  }
+
+  function alreadyReported(type: FuelType) {
+    return Boolean(prices?.viewer.reportedFuelTypes?.includes(type))
+  }
+
+  async function sendReport(
+    fuelType: FuelType,
+    agreed: boolean,
+    price?: number,
+  ) {
+    setBusyFuel(fuelType)
+    setActionError(null)
+    setActionMessage(null)
+
+    try {
+      await submitReport(station.id, {
+        fuelType,
+        agreed,
+        price,
+        lat: userLocation?.latitude,
+        lon: userLocation?.longitude,
+      })
+      setCorrectingFuel(null)
+      setDraftPrice("")
+      setActionMessage(
+        agreed
+          ? `Merci — ${fuelType} confirmé.`
+          : `Merci — prix ${fuelType} signalé.`,
+      )
+      await loadPrices()
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Envoi impossible",
+      )
+    } finally {
+      setBusyFuel(null)
+    }
+  }
+
+  function startCorrection(fuel: { type: FuelType; price: number }) {
+    if (!isAuthenticated) {
+      onOpenAuth?.()
+      return
+    }
+    setCorrectingFuel(fuel.type)
+    setDraftPrice(fuel.price.toFixed(3))
+    setActionError(null)
+    setActionMessage(null)
+  }
+
+  function handleConfirm(fuel: { type: FuelType; price: number }) {
+    if (!isAuthenticated) {
+      onOpenAuth?.()
+      return
+    }
+    void sendReport(fuel.type, true)
+  }
+
+  function handleCorrectionSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!correctingFuel) return
+
+    const normalized = draftPrice.replace(",", ".")
+    const value = Number(normalized)
+    if (Number.isNaN(value) || value <= 0) {
+      setActionError("Saisis un prix valide (ex. 1.689)")
+      return
+    }
+
+    void sendReport(correctingFuel, false, value)
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
@@ -117,29 +262,166 @@ function StationDetails({
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-dashed border-line bg-paper/40 px-4 py-4">
+        <div className="mt-5 rounded-2xl border border-line/80 bg-paper/40 px-4 py-4">
           <h3 className="font-display text-sm font-bold text-ink">
             Prix constatés
           </h3>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Bientôt : confirme ou corrige un prix sur place. Les contributions
-            seront filtrées pour éviter les abus.
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            Consensus des signalements (médiane 48 h). Au moins 2 avis pour
+            afficher un prix.
           </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              disabled
-              className="min-h-10 flex-1 cursor-not-allowed rounded-xl bg-surface px-3 text-xs font-semibold text-muted/70 ring-1 ring-line"
+
+          {!isAuthenticated && onOpenAuth && (
+            <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="font-semibold text-petrol underline-offset-2 hover:underline"
+              >
+                Connecte-toi
+              </button>{" "}
+              pour confirmer ou corriger un prix.
+            </p>
+          )}
+
+          {pricesLoading && (
+            <p className="mt-3 text-xs text-muted">Chargement des avis…</p>
+          )}
+          {pricesError && (
+            <p className="mt-3 text-xs text-red-700 dark:text-red-400">
+              {pricesError}
+            </p>
+          )}
+
+          {actionMessage && (
+            <p
+              role="status"
+              className="mt-3 rounded-lg bg-petrol/10 px-3 py-2 text-xs text-petrol"
             >
-              Prix OK
-            </button>
-            <button
-              type="button"
-              disabled
-              className="min-h-10 flex-1 cursor-not-allowed rounded-xl bg-surface px-3 text-xs font-semibold text-muted/70 ring-1 ring-line"
+              {actionMessage}
+            </p>
+          )}
+          {actionError && (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg bg-amber/15 px-3 py-2 text-xs text-ink-soft"
             >
-              Pas d&apos;accord
-            </button>
+              {actionError}
+            </p>
+          )}
+
+          <div className="mt-3 space-y-3">
+            {station.fuels.map((fuel) => {
+              const observed = observedFor(fuel.type)
+              const reported = alreadyReported(fuel.type)
+              const busy = busyFuel === fuel.type
+              const correcting = correctingFuel === fuel.type
+
+              return (
+                <div
+                  key={`observed-${fuel.type}`}
+                  className="rounded-xl border border-line/70 bg-surface px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink">
+                        {fuel.type}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {isPublished(observed)
+                          ? `${observed!.sampleCount} avis · ${formatDate(observed!.computedAt)}`
+                          : observed
+                            ? `${observed.sampleCount} avis — pas encore publié`
+                            : "Pas encore d’avis"}
+                      </p>
+                    </div>
+                    <p className="font-display text-lg font-bold tabular-nums text-ink">
+                      {isPublished(observed) ? (
+                        <>
+                          {observed!.price.toFixed(3)}
+                          <span className="ml-1 text-xs font-semibold text-muted">
+                            €/L
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-semibold text-muted">
+                          —
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {correcting ? (
+                    <form
+                      onSubmit={handleCorrectionSubmit}
+                      className="mt-3 space-y-2"
+                    >
+                      <label className="block">
+                        <span className="text-[11px] font-medium text-muted">
+                          Prix constaté (€/L)
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={draftPrice}
+                          onChange={(event) => setDraftPrice(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-line/90 bg-paper/80 px-3 py-2 text-sm tabular-nums text-ink outline-none focus:border-petrol focus:ring-2 focus:ring-petrol/20"
+                          placeholder="1.689"
+                          autoFocus
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCorrectingFuel(null)
+                            setDraftPrice("")
+                          }}
+                          className="min-h-9 flex-1 rounded-lg bg-paper-deep text-xs font-semibold text-ink-soft"
+                          disabled={busy}
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="min-h-9 flex-1 rounded-lg bg-petrol text-xs font-semibold text-surface disabled:opacity-60"
+                        >
+                          {busy ? "Envoi…" : "Envoyer"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || reported}
+                        onClick={() => handleConfirm(fuel)}
+                        className={`min-h-9 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
+                          reported
+                            ? "cursor-not-allowed bg-paper-deep text-muted/70 ring-line"
+                            : "bg-surface text-petrol ring-petrol/30 hover:bg-petrol/10"
+                        }`}
+                      >
+                        {reported ? "Déjà signalé" : "Prix OK"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || reported}
+                        onClick={() => startCorrection(fuel)}
+                        className={`min-h-9 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
+                          reported
+                            ? "cursor-not-allowed bg-paper-deep text-muted/70 ring-line"
+                            : "bg-surface text-ink-soft ring-line hover:bg-paper-deep"
+                        }`}
+                      >
+                        Pas d&apos;accord
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -169,7 +451,9 @@ function StationDetails({
         )}
 
         <p className="mt-6 border-t border-line/80 pt-4 text-xs leading-relaxed text-muted">
-          Prix officiels : données publiques. Enseignes et position : OpenStreetMap.
+          Prix officiels : données publiques. Enseignes et position :
+          OpenStreetMap. Prix constatés : contributions filtrées (compte, rate
+          limit, fourchette ±15 %).
         </p>
       </div>
     </div>

@@ -1,19 +1,17 @@
-# Déploiement — en-têtes HTTP recommandés
+# Déploiement — en-têtes HTTP (Vercel)
 
-Checklist à configurer **côté hébergeur** (Netlify, Cloudflare Pages, nginx, etc.) lors de la mise en production. Non applicable en `pnpm dev`.
+Les en-têtes de base sont déjà dans `vercel.json`. La CSP ci-dessous peut être ajoutée plus tard (à tester : MapLibre / workers).
 
-## Sécurité
+## Déjà configuré (`vercel.json`)
 
-| En-tête | Valeur suggérée |
-|---------|-----------------|
+| En-tête | Valeur |
+|---------|--------|
 | `X-Content-Type-Options` | `nosniff` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` (requis pour les tuiles OSM) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` (tuiles OSM) |
 | `X-Frame-Options` | `DENY` |
 | `Permissions-Policy` | `geolocation=(self), camera=(), microphone=()` |
 
 ## Content-Security-Policy (brouillon)
-
-Adapter selon l’hébergeur et les domaines réels :
 
 ```text
 default-src 'self';
@@ -34,6 +32,6 @@ base-uri 'self';
 
 Notes :
 
-- Les tuiles OSM exigent un `Referer` valide → ne pas utiliser `Referrer-Policy: no-referrer`.
-- Si tu ajoutes MapTiler / un autre fournisseur de tuiles, mets à jour `img-src` et `connect-src`.
-- Phase 2 : ajouter l’origine de l’API backend dans `connect-src`.
+- L’API Phase 2 est **same-origin** (`/api`) → déjà couverte par `'self'`.
+- Tuiles OSM : ne pas utiliser `Referrer-Policy: no-referrer`.
+- Resend / Neon sont appelés **côté serveur** uniquement (pas dans `connect-src` navigateur).

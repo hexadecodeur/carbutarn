@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode, type HTMLAttributes } from "react"
 import type { ListFuelType, PriceSortOrder, SortBy, Station } from "../types/station"
 import type { LegalDocId } from "../content/legal"
+import type { AuthUser } from "../hooks/useAuth"
 import StationFilters from "./StationFilters"
 import StationList from "./StationList"
 import StationDetails from "./StationDetails"
@@ -35,6 +36,10 @@ type StationPanelProps = {
   /** Filtre enseigne actif (affiché en chip) */
   brandFilter?: string | null
   onClearBrandFilter?: () => void
+  authUser?: AuthUser | null
+  authLoading?: boolean
+  onOpenAuth?: () => void
+  onLogout?: () => void
   /** Affiche le footer (légal + thème). Desktop: toujours ; mobile: si fusionné */
   showFooter?: boolean
   /** Zone de resize mobile (détails) */
@@ -62,6 +67,10 @@ function StationPanel({
   onRetry,
   brandFilter = null,
   onClearBrandFilter,
+  authUser = null,
+  authLoading = false,
+  onOpenAuth,
+  onLogout,
   showFooter = true,
   detailsDragHandle,
   listChromeDragProps,
@@ -172,9 +181,20 @@ function StationPanel({
             station={selectedStation}
             userLocation={userLocation}
             onClose={onCloseDetails}
+            isAuthenticated={Boolean(authUser)}
+            onOpenAuth={onOpenAuth}
           />
         </div>
-        {showFooter && <AppFooter onOpen={onOpenLegal} compact />}
+        {showFooter && (
+          <AppFooter
+            onOpen={onOpenLegal}
+            compact
+            user={authUser}
+            authLoading={authLoading}
+            onOpenAuth={onOpenAuth}
+            onLogout={onLogout}
+          />
+        )}
       </div>
     )
   }
@@ -253,7 +273,16 @@ function StationPanel({
         />
       </div>
 
-      {showFooter && <AppFooter onOpen={onOpenLegal} compact />}
+      {showFooter && (
+        <AppFooter
+          onOpen={onOpenLegal}
+          compact
+          user={authUser}
+          authLoading={authLoading}
+          onOpenAuth={onOpenAuth}
+          onLogout={onLogout}
+        />
+      )}
     </div>
   )
 }

@@ -1,62 +1,107 @@
 # Phase 2 — Mode participatif (prix constatés)
 
-Document d’architecture pour le futur backend. **Non implémenté** dans le client actuel : la fiche station affiche déjà un placeholder « Prix constatés ».
+Document d’architecture. Le front Phase 1 affiche déjà un placeholder « Prix constatés » dans `StationDetails`.
+
+## Décisions figées
+
+| Sujet | Choix |
+|--------|--------|
+| Auth | **Magic link** (e-mail, pas de mot de passe) |
+| Hébergement | **Vercel** (SPA Vite + fonctions serverless `/api`) |
+| Base | **Neon Postgres** (serverless, intégration Vercel) |
+| E-mails | **Resend** |
+| Sync Open Data | **Vercel Cron** → `GET /api/cron/sync-official` |
+| Framework API | **Hono** (`server/` + entrée `api/[[...route]].ts`) |
 
 ## Objectif produit
 
-Pour chaque carburant d’une station :
-
 | Colonne | Source | Éditable |
 |---------|--------|----------|
-| Prix officiel | Open Data gouvernement | Non |
-| Prix constaté | Consensus des signalements utilisateurs | Via signalement |
+| Prix officiel | Open Data (sync cron → Postgres) | Non |
+| Prix constaté | Consensus des signalements | Via signalement |
 
-Actions utilisateur : **Prix OK** | **Pas d’accord** → saisie d’un prix corrigé + horodatage.
+Actions : **Prix OK** | **Pas d’accord** → saisie d’un prix + horodatage.
 
-## Pourquoi un backend est obligatoire
+## Pourquoi un backend
 
-Toute validation côté client peut être contournée. Un utilisateur malveillant pourrait sinon publier n’importe quel prix. Les règles anti-abus doivent vivre **uniquement sur le serveur**.
+Toute validation client est contournable. Anti-abus **uniquement serveur**.
 
 ## Flux
 
 ```text
-Open Data (sync cron)
-        │
-        ▼
-   official_prices
-        │
-User report ──► API ──► règles anti-abus ──► reports
-                              │
-                              ▼
-                     consensus (médiane)
-                              │
-                              ▼
-                      observed_prices ──► App UI
+Vercel Cron ──► /api/cron/sync-official ──► official_prices (Neon)
+                                                    │
+Front ──GET /api/stations/:id/prices───────────────┤
+Front ──POST /api/auth/magic-link ──► Resend        │
+Front ──GET  /api/auth/verify?token=… ──► cookie    │
+Front ──POST /api/stations/:id/reports (cookie) ──► reports
+                                                    │
+                                              médiane 48h
+                                                    │
+                                              observed_prices
 ```
 
-## Règles anti-abus (serveur)
+## Règles anti-abus (MVP)
 
-1. **Compte léger** — email magique ou OAuth (recommandé vs fingerprint anonyme).
-2. **Rate limit** — 1 signalement / station / carburant / 24 h par compte.
-3. **Fourchette de prix** — rejet si hors ±15 % du prix officiel (ou bornes absolues FR réalistes).
-4. **Géofence soft** — signalement boosté si GPS &lt; ~300 m de la station ; pas bloquant total (privacy).
-5. **Consensus** — prix affiché = médiane des signalements des dernières 48 h (pas le dernier seul).
-6. **Réputation** — signalements trop écartés du consensus pèsent moins ; comptes nouveaux plafonnés.
-7. **Modération** — flag auto si écart extrême ; file d’attente simple.
+1. Compte via magic link (session cookie `HttpOnly`)
+2. 1 signalement / station / carburant / 2 h / compte
+3. Fourchette ±15 % du prix officiel si correction
+4. Géofence soft : weight ↑ si GPS &lt; ~300 m (jamais bloquant)
+5. Prix affiché = médiane des reports 48 h (poids simple)
+6. Réputation / modération = V2
 
-## Stack proposée
+## Endpoints
 
-- API légère (Hono ou Express) + Postgres
-- Tables : `users`, `stations` (cache id gouv), `official_prices`, `reports`, `votes`
-- Job : sync Open Data toutes les X heures
-- Le front React consomme uniquement cette API pour les contributions
+| Méthode | Chemin | Auth |
+|---------|--------|------|
+| `POST` | `/api/auth/magic-link` | Non — `{ email }` |
+| `GET` | `/api/auth/verify?token=` | Non — pose le cookie, redirect |
+| `GET` | `/api/auth/me` | Cookie |
+| `POST` | `/api/auth/logout` | Cookie |
+| `GET` | `/api/stations/:id/prices` | Optionnel |
+| `POST` | `/api/stations/:id/reports` | Cookie — `{ fuelType, agreed, price?, lat?, lon? }` |
+| `GET` | `/api/cron/sync-official` | Header `Authorization: Bearer CRON_SECRET` |
+| `GET` | `/api/health` | Non |
 
-## Endpoints envisagés
+## Structure code
 
-- `GET /stations/:id/prices` — officiel + constaté
-- `POST /stations/:id/reports` — `{ fuelType, price, agreed, lat?, lon? }` (auth)
-- `POST /stations/:id/confirm` — « Prix OK » sans nouveau prix
+```text
+api/[[...route]].ts     # Entrée Vercel (Hono)
+server/
+  app.ts                # Routes
+  db/schema.ts          # Drizzle
+  db/client.ts          # Neon
+  routes/*.ts
+  lib/auth.ts           # Magic link + session
+  lib/antiAbuse.ts
+  lib/consensus.ts
+  lib/syncOfficial.ts
+```
 
-## UI déjà en place (Phase 1)
+## Variables d’environnement
 
-Dans `StationDetails`, section « Prix constatés » avec boutons désactivés et texte « Bientôt ». Brancher ces boutons quand l’API existera.
+Voir `.env.example`. Sur Vercel : Project Settings → Environment Variables (+ Neon / Resend).
+
+## Dev local
+
+```bash
+pnpm install
+# Copier .env.example → .env.local et renseigner Neon + Resend + secrets
+pnpm db:push          # schéma Neon
+pnpm dev:api          # API :8787
+pnpm dev              # Vite (proxy /api → :8787)
+```
+
+## UI Phase 1 déjà en place
+
+Brancher les boutons de `StationDetails` quand auth + `GET/POST` prix sont opérationnels.
+
+## Roadmap d’implémentation
+
+1. ✅ Décisions + scaffold API / schéma / stubs
+2. Brancher Neon + Resend (env prod)
+3. Finaliser magic link + cookie session
+4. Sync cron Open Data
+5. Reports + consensus
+6. Front : login + brancher « Prix constatés »
+7. Headers CSP (`docs/DEPLOY_HEADERS.md`) + `connect-src` same-origin `/api`

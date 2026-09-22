@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react"
+import AuthModal from "./components/AuthModal"
 import BrandMark from "./components/BrandMark"
 import LegalModal from "./components/LegalModal"
 import StationMap, { type StationMapHandle } from "./components/StationMap"
 import StationPanel from "./components/StationPanel"
 import { searchCities, type City } from "./services/cityApi"
+import { useAuth } from "./hooks/useAuth"
 import { useFilterPrefs } from "./hooks/useFilterPrefs"
 import { useLegalDoc } from "./hooks/useLegalDoc"
 import { useMobileSheet } from "./hooks/useMobileSheet"
@@ -59,6 +61,17 @@ function App() {
     handleSortByChange,
   } = useFilterPrefs()
   const { legalDocId, openLegal, closeLegal } = useLegalDoc()
+  const {
+    user: authUser,
+    loading: authLoading,
+    authOpen,
+    flash: authFlash,
+    openAuth,
+    closeAuth,
+    requestMagicLink,
+    logout,
+    clearFlash,
+  } = useAuth()
   const {
     panelWidth,
     isResizingPanel,
@@ -321,6 +334,12 @@ function App() {
     onRetry: loadError ? retryLoadStations : undefined,
     brandFilter,
     onClearBrandFilter: clearBrandFilter,
+    authUser,
+    authLoading,
+    onOpenAuth: openAuth,
+    onLogout: () => {
+      void logout()
+    },
   }
 
   function renderSearchBar(inputId: string) {
@@ -617,6 +636,17 @@ function App() {
           onNavigate={openLegal}
         />
       )}
+
+      <AuthModal
+        open={authOpen || authFlash === "ok"}
+        onClose={() => {
+          clearFlash()
+          closeAuth()
+        }}
+        onSubmitEmail={requestMagicLink}
+        flash={authFlash}
+        onClearFlash={clearFlash}
+      />
     </main>
   )
 }
