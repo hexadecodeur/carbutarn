@@ -1,7 +1,10 @@
 /**
  * Bundle l’API Hono en un seul fichier pour Vercel.
  * Sortie : api/[[...route]].js (catch-all /api/*).
- * Ne pas gitignorer ce fichier : Vercel n’upload pas les outputs gitignored.
+ *
+ * Important : ce fichier doit être commité. Avec framework Vite + outputDirectory,
+ * une fonction créée uniquement pendant le build n’est pas détectée → 404 NOT_FOUND.
+ * Après une modif serveur : pnpm bundle:api puis commit api/[[...route]].js.
  */
 import * as esbuild from "esbuild"
 import { mkdir } from "node:fs/promises"
