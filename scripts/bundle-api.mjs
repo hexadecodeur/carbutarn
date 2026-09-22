@@ -1,17 +1,22 @@
 /**
  * Bundle l’API Hono en un seul fichier pour Vercel.
- * Sortie : api/[[...route]].js (catch-all /api/*).
+ * Sortie : api/[...route].js (catch-all /api/* — un ou plusieurs segments).
  *
- * Important : ce fichier doit être commité. Avec framework Vite + outputDirectory,
- * une fonction créée uniquement pendant le build n’est pas détectée → 404 NOT_FOUND.
- * Après une modif serveur : pnpm bundle:api puis commit api/[[...route]].js.
+ * Ne pas utiliser [[...route]] (optionnel) : sur le dossier api/ Vercel, les
+ * chemins à 2+ segments (/api/auth/me) renvoient 404 NOT_FOUND.
+ *
+ * Ce fichier doit être commité. Après modif serveur : pnpm bundle:api puis commit.
  */
 import * as esbuild from "esbuild"
-import { mkdir } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 
 await mkdir("api", { recursive: true })
 
-const outfile = "api/[[...route]].js"
+// Anciens noms éventuels
+await rm("api/[[...route]].js", { force: true })
+await rm("api/index.js", { force: true })
+
+const outfile = "api/[...route].js"
 
 await esbuild.build({
   entryPoints: ["server/vercel-entry.ts"],

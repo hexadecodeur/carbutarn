@@ -2,57 +2,51 @@
 
 Application web cartographique pour consulter les prix des carburants dans le Tarn.
 
-CarbuTarn s’appuie sur les données publiques françaises (prix officiels) et OpenStreetMap (enseignes) pour afficher les stations-service, leurs carburants, leurs prix et un itinéraire vers la station.
+Prix officiels (Open Data) + enseignes OpenStreetMap, et **prix constatés** via signalements authentifiés (magic link).
 
-> Projet en cours de développement. Phase 2 (prix participatifs) : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md).
->
-> En-têtes / déploiement Vercel : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md).
+Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · détail Phase 2 : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md) · en-têtes : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md).
 
-## Fonctionnalités actuelles
+## Fonctionnalités
 
 - Carte interactive des stations-service du Tarn
-- Géolocalisation de l’utilisateur
-- Prix officiels des carburants (Open Data)
-- Enseignes via OpenStreetMap (`ref:FR:prix-carburants`)
-- Adresse exacte de chaque station
+- Géolocalisation
+- Prix officiels (Open Data) + enseignes OSM (`ref:FR:prix-carburants`)
+- Adresse, services, horaires automate 24h
 - Recherche par ville (Tarn)
-- Classement par distance ou par prix (Gazole, E10, SP98, E85)
-- Synchronisation carte / fiche station
-- Fiche détaillée (prix, services, horaires automate 24h)
+- Classement distance / prix (Gazole, E10, SP98, E85)
 - Itinéraire « Y aller » (Google Maps / Apple Maps)
-- Interface responsive desktop / mobile
-
-## Fonctionnalités prévues (Phase 2)
-
-- Prix constatés (magic link + consensus serveur)
-- Confirmation / désaccord + rectification
-- Anti-abus (rate limit, fourchette, géofence soft)
+- Prix constatés : connexion magic link, **Prix OK** / **Pas d’accord**, consensus serveur (médiane 48 h, anti-abus)
+- Interface responsive
 
 ## Stack
 
-- **Front** : React · TypeScript · Vite · Tailwind · MapLibre
-- **API (Phase 2)** : Hono sur Vercel · Neon Postgres · Resend (magic link)
-- **Hébergement** : Vercel
+| Couche | Techno |
+|--------|--------|
+| Front | React · TypeScript · Vite · Tailwind · MapLibre |
+| API | Hono (serverless Vercel) · Neon Postgres · Drizzle · Resend |
+| Hébergement | Vercel (SPA + `api/[...route].js` + cron quotidien) |
 
 ## Données
 
 | Source | Usage |
 |--------|--------|
-| [data.economie.gouv.fr](https://data.economie.gouv.fr) — flux instantané prix carburants | Stations, adresses, prix, services |
-| [OpenStreetMap](https://www.openstreetmap.org) (Overpass) | Enseignes / noms + coordonnées plus précises (quand l’écart &lt; 200 m) |
-| [geo.api.gouv.fr](https://geo.api.gouv.fr) | Recherche de communes du Tarn |
+| [data.economie.gouv.fr](https://data.economie.gouv.fr) — flux prix carburants | Stations, adresses, prix, services (front + sync Neon) |
+| [OpenStreetMap](https://www.openstreetmap.org) (Overpass) | Enseignes / noms + coordonnées (écart &lt; 200 m) |
+| [geo.api.gouv.fr](https://geo.api.gouv.fr) | Communes du Tarn |
 
 ## Architecture
 
 ```text
-Open Data ──► fuelApi.ts (front, lecture directe Phase 1)
-         └─► cron /api/cron/sync-official ──► Neon (Phase 2)
+Open Data ──► fuelApi.ts (front)
+         └─► cron /api/cron/sync-official ──► Neon (official_prices)
 
 Overpass ──► osmBrands.ts
 geo.api   ──► cityApi.ts
 
-Front ──► /api/* (Hono) ──► auth magic link · reports · observed prices
+Front ──► /api/* (Hono) ──► magic link · reports · observed prices
 ```
+
+Entrée serverless : bundle versionné `api/[...route].js` (généré par `pnpm bundle:api` / `pnpm build`). **À committer** après changement serveur — sinon Vercel ne déploie pas `/api` (404).
 
 ## Développement
 
@@ -64,19 +58,25 @@ pnpm dev:api                 # API http://localhost:8787
 pnpm dev                     # Vite (proxy /api → :8787)
 ```
 
-Sync manuelle Open Data → Neon :
+Autres scripts :
 
 ```bash
-pnpm sync:official
+pnpm sync:official   # sync Open Data → Neon (local)
+pnpm bundle:api      # régénère api/[...route].js
+pnpm db:studio       # Drizzle Studio
 ```
+
+Health check local : [http://localhost:8787/api/health](http://localhost:8787/api/health).
 
 ## Déploiement Vercel
 
-1. Importer le repo sur Vercel
-2. Ajouter les variables de `.env.example`
-3. Brancher une base Neon (marketplace Vercel)
-4. Domaine vérifié Resend pour `EMAIL_FROM`
-5. Premier deploy puis `GET /api/cron/sync-official` (ou attendre le cron 6 h)
+1. Repo connecté + variables de `.env.example` (dont `APP_URL` = URL prod)
+2. Neon (marketplace) + domaine Resend pour `EMAIL_FROM`
+3. Deploy Git — le build lance Vite + `bundle-api`
+4. Vérifier [GET /api/health](https://carbutarn.vercel.app/api/health)
+5. Premier sync : `GET /api/cron/sync-official` avec `Authorization: Bearer $CRON_SECRET` (cron Hobby : `0 4 * * *`)
+
+Après modif du code `server/` : `pnpm bundle:api` puis commit de `api/[...route].js`.
 
 ## Licence
 

@@ -11,7 +11,7 @@ Document d’architecture. Le front Phase 1 affiche déjà un placeholder « Pri
 | Base | **Neon Postgres** (serverless, intégration Vercel) |
 | E-mails | **Resend** |
 | Sync Open Data | **Vercel Cron** → `GET /api/cron/sync-official` |
-| Framework API | **Hono** (`server/` + entrée `api/[[...route]].ts`) |
+| Framework API | **Hono** (`server/` + entrée `api/[...route].js`) |
 
 ## Objectif produit
 
@@ -66,8 +66,8 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 ## Structure code
 
 ```text
-api/[[...route]].js     # Bundle (pnpm bundle:api) — DOIT être versionné (Vercel
-                        # ne détecte pas une fonction créée seulement au build)
+api/[...route].js       # Bundle (pnpm bundle:api) — DOIT être versionné
+                        # Catch-all requis ([...]) : [[...]] ne matche qu’1 segment
 server/
   vercel-entry.ts       # handle(@hono/node-server/vercel) + app
   app.ts                # Routes
