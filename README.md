@@ -24,7 +24,7 @@ Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · détail Phase 2 :
 |--------|--------|
 | Front | React · TypeScript · Vite · Tailwind · MapLibre |
 | API | Hono (serverless Vercel) · Neon Postgres · Drizzle · Resend |
-| Hébergement | Vercel (SPA + `api/[...route].js` + cron quotidien) |
+| Hébergement | Vercel (SPA + `api/index.js` + rewrite `/api/*` + cron) |
 
 ## Données
 
@@ -46,7 +46,7 @@ geo.api   ──► cityApi.ts
 Front ──► /api/* (Hono) ──► magic link · reports · observed prices
 ```
 
-Entrée serverless : bundle versionné `api/[...route].js` (généré par `pnpm bundle:api` / `pnpm build`). **À committer** après changement serveur — sinon Vercel ne déploie pas `/api` (404).
+Entrée serverless : bundle versionné `api/index.js` + rewrite `vercel.json` (`/api/(.*)` → `/api/index`). **À committer** après changement serveur.
 
 ## Développement
 
@@ -62,7 +62,7 @@ Autres scripts :
 
 ```bash
 pnpm sync:official   # sync Open Data → Neon (local)
-pnpm bundle:api      # régénère api/[...route].js
+pnpm bundle:api      # régénère api/index.js
 pnpm db:studio       # Drizzle Studio
 ```
 
@@ -76,7 +76,7 @@ Health check local : [http://localhost:8787/api/health](http://localhost:8787/ap
 4. Vérifier [GET /api/health](https://carbutarn.vercel.app/api/health)
 5. Premier sync : `GET /api/cron/sync-official` avec `Authorization: Bearer $CRON_SECRET` (cron Hobby : `0 4 * * *`)
 
-Après modif du code `server/` : `pnpm bundle:api` puis commit de `api/[...route].js`.
+Après modif du code `server/` : `pnpm bundle:api` puis commit de `api/index.js`.
 
 ## Licence
 

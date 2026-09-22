@@ -1,22 +1,21 @@
 /**
  * Bundle l’API Hono en un seul fichier pour Vercel.
- * Sortie : api/[...route].js (catch-all /api/* — un ou plusieurs segments).
+ * Sortie : api/index.js + rewrite vercel.json `/api/(.*)` → `/api/index`.
  *
- * Ne pas utiliser [[...route]] (optionnel) : sur le dossier api/ Vercel, les
- * chemins à 2+ segments (/api/auth/me) renvoient 404 NOT_FOUND.
+ * Les catch-all `[...route]` / `[[...route]]` ne matchent qu’un segment hors Next.js
+ * (/api/health OK, /api/auth/me → 404). Le rewrite conserve l’URL d’origine pour Hono.
  *
- * Ce fichier doit être commité. Après modif serveur : pnpm bundle:api puis commit.
+ * Après modif serveur : pnpm bundle:api puis commit de api/index.js.
  */
 import * as esbuild from "esbuild"
 import { mkdir, rm } from "node:fs/promises"
 
 await mkdir("api", { recursive: true })
 
-// Anciens noms éventuels
 await rm("api/[[...route]].js", { force: true })
-await rm("api/index.js", { force: true })
+await rm("api/[...route].js", { force: true })
 
-const outfile = "api/[...route].js"
+const outfile = "api/index.js"
 
 await esbuild.build({
   entryPoints: ["server/vercel-entry.ts"],
