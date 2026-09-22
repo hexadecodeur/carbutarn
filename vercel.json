@@ -3,9 +3,6 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" }
-  ],
   "crons": [
     {
       "path": "/api/cron/sync-official",

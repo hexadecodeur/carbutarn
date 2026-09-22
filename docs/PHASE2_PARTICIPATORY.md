@@ -66,7 +66,7 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 ## Structure code
 
 ```text
-api/index.js            # Bundle généré (pnpm build) — entrée Vercel
+api/[[...route]].js     # Bundle généré (pnpm build) — catch-all Vercel /api/*
 server/
   vercel-entry.ts       # handle(@hono/node-server/vercel) + app
   app.ts                # Routes

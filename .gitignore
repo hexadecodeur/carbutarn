@@ -34,7 +34,3 @@ dist-ssr
 .vite/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
-# API bundle (généré pour Vercel)
-api/index.js
-api/index.js.map

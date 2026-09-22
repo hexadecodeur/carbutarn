@@ -1,12 +1,14 @@
 /**
  * Bundle l’API Hono en un seul fichier pour Vercel.
- * Les imports `../server/*` hors de `/api` ne sont pas résolus correctement
- * en ESM sur les Serverless Functions.
+ * Sortie : api/[[...route]].js (catch-all /api/*).
+ * Ne pas gitignorer ce fichier : Vercel n’upload pas les outputs gitignored.
  */
 import * as esbuild from "esbuild"
 import { mkdir } from "node:fs/promises"
 
 await mkdir("api", { recursive: true })
+
+const outfile = "api/[[...route]].js"
 
 await esbuild.build({
   entryPoints: ["server/vercel-entry.ts"],
@@ -14,14 +16,13 @@ await esbuild.build({
   platform: "node",
   target: "node20",
   format: "esm",
-  outfile: "api/index.js",
+  outfile,
   sourcemap: false,
   logLevel: "info",
-  // Dépendances natives / optionnelles à laisser externes si besoin
   packages: "bundle",
   banner: {
     js: 'import { createRequire } from "module"; const require = createRequire(import.meta.url);',
   },
 })
 
-console.log("API bundled → api/index.js")
+console.log(`API bundled → ${outfile}`)
