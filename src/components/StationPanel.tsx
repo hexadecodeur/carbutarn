@@ -42,6 +42,7 @@ type StationPanelProps = {
   onLogout?: () => void
   onAuthExpired?: () => void
   onDeleteAccount?: () => void
+  onOpenMyReports?: () => void
   /** Affiche le footer (légal + thème). Desktop: toujours ; mobile: si fusionné */
   showFooter?: boolean
   /** Zone de resize mobile (détails) */
@@ -75,6 +76,7 @@ function StationPanel({
   onLogout,
   onAuthExpired,
   onDeleteAccount,
+  onOpenMyReports,
   showFooter = true,
   detailsDragHandle,
   listChromeDragProps,
@@ -199,6 +201,7 @@ function StationPanel({
             onOpenAuth={onOpenAuth}
             onLogout={onLogout}
             onDeleteAccount={onDeleteAccount}
+            onOpenMyReports={onOpenMyReports}
           />
         )}
       </div>
@@ -288,6 +291,7 @@ function StationPanel({
           onOpenAuth={onOpenAuth}
           onLogout={onLogout}
           onDeleteAccount={onDeleteAccount}
+          onOpenMyReports={onOpenMyReports}
         />
       )}
     </div>

@@ -16,6 +16,43 @@ Conséquences :
 2. Wrapper store = shell qui charge **exactement** cette URL (Digital Asset Links / Apple Associated Domains).
 3. Ne pas élargir CORS à `*`. Ne pas passer le cookie en `SameSite=None` sans CSRF token.
 
+## État PWA (fait)
+
+| Élément | Fichier |
+|---------|---------|
+| Manifest | [`public/manifest.webmanifest`](../public/manifest.webmanifest) |
+| Icônes 192 / 512 / apple-touch | [`public/icons/`](../public/icons/) — régénérer via `pnpm icons` |
+| Service worker | [`public/sw.js`](../public/sw.js) (pas de cache API / tuiles) |
+| Enregistrement SW | prod uniquement (`src/main.tsx`) |
+| Digital Asset Links (template) | [`public/.well-known/assetlinks.json`](../public/.well-known/assetlinks.json) |
+
+Vérifier en prod (Chrome → Application → Manifest / Service workers) après deploy.
+
+« Ajouter à l’écran d’accueil » (Android Chrome / iOS Safari) fonctionne dès que le site est en HTTPS avec ce manifest.
+
+## TWA Android (à faire — Bubblewrap)
+
+Quand tu es prêt à publier sur le Play Store :
+
+1. Domaine = `APP_URL` (idéalement custom, sinon `https://carbutarn.vercel.app`).
+2. Remplir `sha256_cert_fingerprints` dans `assetlinks.json` (empreinte du **upload keystore** Play / keytool).
+3. Générer le projet :
+
+```bash
+npm i -g @bubblewrap/cli
+bubblewrap init --manifest https://TON_DOMAINE/manifest.webmanifest
+bubblewrap build
+```
+
+4. Package id suggéré : `fr.hexadecodeur.carbutarn` (déjà dans le template assetlinks).
+5. Publier `assetlinks.json` **avant** la soumission Play (URL : `https://TON_DOMAINE/.well-known/assetlinks.json`).
+6. Valider : [Digital Asset Links](https://developers.google.com/digital-asset-links/tools/generator).
+
+## iOS (à faire)
+
+- Court terme : PWA « Sur l’écran d’accueil » via Safari (déjà supporté par le manifest + apple-touch-icon).
+- Store App Store : wrapper SFSafariViewController / WKWebView **same-origin** uniquement, ou attendre une vraie TWA-équivalent ; Associated Domains si appli native.
+
 ## Tuiles carte (todo 8)
 
 `tile.openstreetmap.org` est **interdit** pour une app store à fort trafic (usage policy OSM).
@@ -66,12 +103,14 @@ Usage strings iOS (si géoloc native plus tard) :
 
 ## Checklist avant soumission
 
+- [x] PWA : manifest + icônes + SW
 - [ ] `SESSION_SECRET` / `MAGIC_LINK_SECRET` ≥ 32 chars (pas `change-me`)
 - [ ] `CRON_SECRET` ≥ 16 chars + cron Vercel envoie `Authorization: Bearer`
 - [ ] `MAPTILER_API_KEY` (hostnames localhost + prod)
 - [ ] `RESEND_API_KEY` + `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` en production
-- [ ] `VITE_MAP_TILE_URL` sous licence store
 - [ ] `pnpm db:push` (colonnes `session_version`, `cooldown_bucket`, `ip_hash`)
 - [ ] `pnpm bundle:api` + commit `api/index.js`
 - [ ] Tester suppression de compte sur device réel
-- [ ] TWA / Associated Domains pointent vers `APP_URL`
+- [ ] Remplir `assetlinks.json` (SHA-256 keystore)
+- [ ] Bubblewrap TWA + validation Digital Asset Links
+- [ ] (Optionnel) domaine custom = `APP_URL`

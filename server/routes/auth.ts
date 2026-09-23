@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { setCookie, deleteCookie } from "hono/cookie"
+import { desc, eq } from "drizzle-orm"
 import {
   SESSION_COOKIE,
   bumpSessionVersion,
@@ -9,6 +10,9 @@ import {
   requestMagicLink,
   sessionCookieOptions,
 } from "../lib/auth"
+import { getDb } from "../db/client"
+import { reports, stationsCache } from "../db/schema"
+import { toIsoOrNull } from "../lib/dates"
 import { clientIp, hashClientIp } from "../lib/rateLimit"
 import { authError, getAuthedUser, rejectInvalidSession } from "../lib/requireAuth"
 import { verifyTurnstile } from "../lib/turnstile"
@@ -109,6 +113,47 @@ authRoutes.get("/me", (c) => {
     return c.json({ user: null })
   }
   return c.json({ user: { id: userId, email } })
+})
+
+/** Historique des signalements du compte connecté (plus récent d’abord). */
+authRoutes.get("/reports", async (c) => {
+  const authed = getAuthedUser(c)
+  if (!authed) return authError(c)
+
+  const db = getDb()
+  const rows = await db
+    .select({
+      id: reports.id,
+      stationId: reports.stationId,
+      fuelType: reports.fuelType,
+      agreed: reports.agreed,
+      price: reports.price,
+      createdAt: reports.createdAt,
+      address: stationsCache.address,
+      city: stationsCache.city,
+      postalCode: stationsCache.postalCode,
+    })
+    .from(reports)
+    .leftJoin(stationsCache, eq(reports.stationId, stationsCache.id))
+    .where(eq(reports.userId, authed.userId))
+    .orderBy(desc(reports.createdAt))
+    .limit(200)
+
+  return c.json({
+    reports: rows.map((row) => ({
+      id: row.id,
+      stationId: row.stationId,
+      fuelType: row.fuelType,
+      agreed: row.agreed,
+      price: row.price,
+      createdAt: toIsoOrNull(row.createdAt) ?? new Date().toISOString(),
+      station: {
+        address: row.address,
+        city: row.city,
+        postalCode: row.postalCode,
+      },
+    })),
+  })
 })
 
 authRoutes.post("/logout", async (c) => {

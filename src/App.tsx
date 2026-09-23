@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import AuthModal from "./components/AuthModal"
 import BrandMark from "./components/BrandMark"
 import LegalModal from "./components/LegalModal"
+import MyReportsModal from "./components/MyReportsModal"
 import StationMap, { type StationMapHandle } from "./components/StationMap"
 import StationPanel from "./components/StationPanel"
 import { searchCities, type City } from "./services/cityApi"
@@ -109,6 +110,7 @@ function App() {
   const [citySuggestions, setCitySuggestions] = useState<City[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [brandFilter, setBrandFilter] = useState<string | null>(null)
+  const [myReportsOpen, setMyReportsOpen] = useState(false)
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() =>
     typeof window !== "undefined" ? loadRecentSearches() : [],
   )
@@ -387,6 +389,11 @@ function App() {
         )
       })
     },
+    onOpenMyReports: authUser
+      ? () => {
+          setMyReportsOpen(true)
+        }
+      : undefined,
   }
 
   function renderSearchBar(inputId: string) {
@@ -681,6 +688,17 @@ function App() {
           docId={legalDocId}
           onClose={closeLegal}
           onNavigate={openLegal}
+        />
+      )}
+
+      {myReportsOpen && authUser && (
+        <MyReportsModal
+          stations={stations}
+          onClose={() => setMyReportsOpen(false)}
+          onSelectStation={(stationId) => {
+            const station = stations.find((s) => s.id === stationId)
+            if (station) selectStation(station)
+          }}
         />
       )}
 

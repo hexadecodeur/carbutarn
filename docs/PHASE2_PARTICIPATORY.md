@@ -60,6 +60,7 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 | `GET` | `/api/auth/verify?token=` | Non — redirige vers `#connexion-token=` (ne consomme pas) |
 | `POST` | `/api/auth/verify` | Non — `{ token }` pose le cookie |
 | `GET` | `/api/auth/me` | Cookie |
+| `GET` | `/api/auth/reports` | Cookie — historique signalements du compte |
 | `POST` | `/api/auth/logout` | Cookie — bump `session_version` |
 | `DELETE` | `/api/auth/account` | Cookie — suppression compte + reports |
 | `GET` | `/api/stations` | Non — proxy Open Data |

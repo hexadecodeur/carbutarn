@@ -122,3 +122,21 @@ export function submitReport(
     },
   )
 }
+
+export type MyReport = {
+  id: string
+  stationId: string
+  fuelType: string
+  agreed: boolean
+  price: number | null
+  createdAt: string
+  station: {
+    address: string | null
+    city: string | null
+    postalCode: string | null
+  }
+}
+
+export function fetchMyReports() {
+  return api<{ reports: MyReport[] }>("/auth/reports")
+}

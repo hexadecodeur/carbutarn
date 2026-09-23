@@ -157,6 +157,11 @@ export async function requestMagicLink(
   // Token uniquement dans le fragment → jamais dans les logs d’accès serveur
   const verifyUrl = `${appUrl}/#connexion-token=${encodeURIComponent(rawToken)}`
 
+  // Dev : loguer le lien si MAGIC_LINK_DEV_LOG=1 (même avec Resend configuré)
+  if (!isProductionRuntime() && process.env.MAGIC_LINK_DEV_LOG === "1") {
+    console.info("[magic-link:dev]", verifyUrl)
+  }
+
   const apiKey = process.env.RESEND_API_KEY?.trim()
   const from =
     process.env.EMAIL_FROM?.trim() || "CarbuTarn <onboarding@resend.dev>"
@@ -166,15 +171,10 @@ export async function requestMagicLink(
       console.error("[magic-link] RESEND_API_KEY missing in production")
       throw new Error("EMAIL_SEND_FAILED")
     }
-    // Dev : indiquer où trouver le lien sans logger le token
     console.info(
-      "[magic-link] RESEND_API_KEY missing — ouvre le fragment #connexion-token=… (token non loggé). E-mail:",
+      "[magic-link] RESEND_API_KEY missing — utilise MAGIC_LINK_DEV_LOG=1 ou configure Resend. E-mail:",
       normalized,
     )
-    // En local uniquement : exposer via variable pour tests manuels
-    if (process.env.MAGIC_LINK_DEV_LOG === "1") {
-      console.info("[magic-link:dev]", verifyUrl)
-    }
     return
   }
 
