@@ -49,5 +49,6 @@ Notes :
 - Vercel Web Analytics : `va.vercel-scripts.com` (script) + `vitals.vercel-insights.com` (événements) ; les beacons same-origin `/_vercel/insights/*` restent couverts par `'self'`.
 - Google Analytics 4 : chargé **uniquement après consentement** (bandeau) ; hosts GTM / GA dans `script-src` et `connect-src`. Pas de script inline (CSP).
 - Sentry Error Monitoring : SDK bundlé (pas de CDN script) ; `connect-src` → `*.ingest.sentry.io` / `*.sentry.io`. Init **prod uniquement** via `SENTRY_DSN` (injecté au build, pas de préfixe `VITE_`).
+- Source maps : générées en `hidden` au build si `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` ; uploadées puis **supprimées** de `dist/` (`filesToDeleteAfterUpload`). Région EU : `SENTRY_URL=https://de.sentry.io`.
 - `theme-boot.js` est un fichier externe (pas de script inline) pour rester compatible CSP.
 - Cookie `carbutarn_session` : HttpOnly, Secure (si `APP_URL` https), SameSite=Lax ; invalidé au logout via `session_version`.

@@ -374,6 +374,10 @@ Voir `.env.example`. Local : `.env.local` (dotenv dans `dev.ts` / drizzle).
 | `TURNSTILE_SECRET_KEY` | Oui | Verify |
 | `MAPTILER_API_KEY` | Fortement reco stores | Tuiles ; hostnames restreints chez MapTiler |
 | `SENTRY_DSN` | Non (reco prod) | Error Monitoring front ; injecté au build (pas de `VITE_`) |
+| `SENTRY_AUTH_TOKEN` | Non (reco prod) | Upload source maps au build (`project:releases`) |
+| `SENTRY_ORG` | Non (reco prod) | Slug org Sentry (source maps) |
+| `SENTRY_PROJECT` | Non (reco prod) | Slug projet (`carbutarn`) |
+| `SENTRY_URL` | Non (EU) | `https://de.sentry.io` si DSN `*.ingest.de.sentry.io` |
 | `MAGIC_LINK_DEV_LOG` | Non (dev) | Log lien terminal |
 | `API_PORT` | Non | Dev API |
 | `VITE_OSM_OVERPASS` | Non | `1` = Overpass live (désactivé par défaut / stores) |
@@ -448,6 +452,7 @@ iOS court terme : PWA Safari. Store App Store = même contrainte same-origin.
 - [x] Vercel Web Analytics (`@vercel/analytics/react`)
 - [x] Google Analytics 4 + bandeau consentement (refus par défaut)
 - [x] Sentry Error Monitoring (`@sentry/react`, prod + `SENTRY_DSN`)
+- [x] Sentry source maps (`@sentry/vite-plugin`, upload build + delete `.map`)
 
 Derniers commits notables (indicatif) : `21100d4` outage + affichage ; `2d79943` base PWA ; Phase 2 auth/consensus antérieure.
 

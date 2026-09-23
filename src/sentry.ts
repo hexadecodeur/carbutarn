@@ -159,23 +159,3 @@ export function initSentry() {
     },
   })
 }
-
-/**
- * TEMP — test prod Sentry : ouvrir `/#sentry-test-error` puis supprimer
- * cet export + l’appel dans `main.tsx` après validation.
- */
-export function maybeSendSentryTestError() {
-  const dsn = typeof __SENTRY_DSN__ === "string" ? __SENTRY_DSN__ : ""
-  if (!import.meta.env.PROD || !dsn.trim()) return
-  if (window.location.hash !== "#sentry-test-error") return
-
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${window.location.search}`,
-  )
-
-  Sentry.captureException(
-    new Error("Sentry test error (temporary — safe to delete)"),
-  )
-}
