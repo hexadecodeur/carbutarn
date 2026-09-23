@@ -1,20 +1,25 @@
 import type { ListFuelType, PriceSortOrder, SortBy } from "../types/station"
+import type { MapPriceSource } from "../utils/filterPrefs"
 import { FUEL_OPTIONS, SORT_BY_OPTIONS } from "../constants/filters"
 
 type StationFiltersProps = {
   selectedFuel: ListFuelType | null
   sortBy: SortBy
   priceOrder: PriceSortOrder
+  mapPriceSource: MapPriceSource
   onSelectedFuelChange: (fuel: ListFuelType | null) => void
   onSortByChange: (sortBy: SortBy) => void
+  onMapPriceSourceChange: (source: MapPriceSource) => void
 }
 
 function StationFilters({
   selectedFuel,
   sortBy,
   priceOrder,
+  mapPriceSource,
   onSelectedFuelChange,
   onSortByChange,
+  onMapPriceSourceChange,
 }: StationFiltersProps) {
   function toggleFuel(fuel: ListFuelType) {
     onSelectedFuelChange(selectedFuel === fuel ? null : fuel)
@@ -47,6 +52,41 @@ function StationFilters({
           )
         })}
       </div>
+
+      {selectedFuel && (
+        <div className="flex items-center gap-2">
+          <p className="shrink-0 text-xs font-medium text-muted">Carte</p>
+          <div
+            className="flex min-w-0 flex-1 gap-1 rounded-lg bg-paper-deep/70 p-0.5"
+            role="group"
+            aria-label="Source des prix sur la carte"
+          >
+            {(
+              [
+                { value: "official", label: "Officiel" },
+                { value: "shared", label: "Partagés" },
+              ] as const
+            ).map(({ value, label }) => {
+              const active = mapPriceSource === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onMapPriceSourceChange(value)}
+                  className={`min-h-9 flex-1 rounded-md px-3 text-xs font-semibold transition ${
+                    active
+                      ? "bg-surface text-petrol shadow-sm ring-1 ring-line/80"
+                      : "text-ink-soft hover:bg-surface/60"
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <p className="shrink-0 text-xs font-medium text-muted">

@@ -15,7 +15,12 @@ import {
   isPriceInTolerance,
   reportWeight,
 } from "../lib/antiAbuse"
-import { computeConsensus, MIN_CONSENSUS_WEIGHT } from "../lib/consensus"
+import {
+  computeConsensus,
+  MIN_CONSENSUS_WEIGHT,
+  MIN_OUTAGE_WEIGHT,
+  totalWeight,
+} from "../lib/consensus"
 import { toIsoOrNull } from "../lib/dates"
 import { fetchOpenDataStations } from "../lib/openDataStations"
 import { authError, getAuthedUser } from "../lib/requireAuth"
@@ -35,10 +40,33 @@ stationsRoutes.get("/", async (c) => {
   }
 })
 
-stationsRoutes.get("/:id/prices", async (c) => {
-  // Session invalide : cookie déjà effacé par attachSession → on continue en anonyme (pas de 500).
-  // Les routes protégées (reports) renvoient 401 via requireUser.
+/**
+ * Prix / ruptures publiés (carte « partagés »).
+ * Uniquement les consensus atteints — le fallback officiel est côté client.
+ */
+stationsRoutes.get("/observed", async (c) => {
+  const db = getDb()
+  const rows = await db.select().from(observedPrices)
 
+  const prices = rows
+    .filter((row) => {
+      if (row.outage) return row.sampleCount >= MIN_OUTAGE_WEIGHT
+      return row.sampleCount >= MIN_CONSENSUS_WEIGHT
+    })
+    .map((row) => ({
+      stationId: row.stationId,
+      fuelType: row.fuelType,
+      price: row.price,
+      outage: row.outage,
+      sampleCount: row.sampleCount,
+      computedAt: toIsoOrNull(row.computedAt) ?? new Date().toISOString(),
+    }))
+
+  c.header("Cache-Control", "public, max-age=60")
+  return c.json({ prices })
+})
+
+stationsRoutes.get("/:id/prices", async (c) => {
   const stationId = c.req.param("id")
   if (!stationId || stationId.length > 64) {
     return c.json({ error: "Station invalide" }, 400)
@@ -52,10 +80,14 @@ stationsRoutes.get("/:id/prices", async (c) => {
     .from(officialPrices)
     .where(eq(officialPrices.stationId, stationId))
 
-  const observed = await db
+  const observedRows = await db
     .select()
     .from(observedPrices)
     .where(eq(observedPrices.stationId, stationId))
+
+  const observedByFuel = new Map(
+    observedRows.map((row) => [row.fuelType, row]),
+  )
 
   let reportedFuelTypes: string[] = []
   let lastReportAt: string | undefined
@@ -86,6 +118,48 @@ stationsRoutes.get("/:id/prices", async (c) => {
     if (iso) lastReportAt = iso
   }
 
+  /** Une entrée par carburant officiel : rupture > consensus > fallback officiel. */
+  const observed = official.map((off) => {
+    const row = observedByFuel.get(off.fuelType)
+
+    if (row?.outage && row.sampleCount >= MIN_OUTAGE_WEIGHT) {
+      return {
+        type: off.fuelType,
+        published: true as const,
+        source: "outage" as const,
+        outage: true as const,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? new Date().toISOString(),
+      }
+    }
+
+    if (
+      row &&
+      !row.outage &&
+      row.sampleCount >= MIN_CONSENSUS_WEIGHT
+    ) {
+      return {
+        type: off.fuelType,
+        published: true as const,
+        source: "community" as const,
+        outage: false as const,
+        price: row.price,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? new Date().toISOString(),
+      }
+    }
+
+    return {
+      type: off.fuelType,
+      published: true as const,
+      source: "official" as const,
+      outage: false as const,
+      price: off.price,
+      sampleCount: row?.sampleCount,
+      computedAt: toIsoOrNull(row?.computedAt ?? null) ?? undefined,
+    }
+  })
+
   return c.json({
     stationId,
     official: official.map((row) => ({
@@ -93,22 +167,7 @@ stationsRoutes.get("/:id/prices", async (c) => {
       price: row.price,
       updatedAt: toIsoOrNull(row.updatedAt),
     })),
-    observed: observed.map((row) => {
-      const published = row.sampleCount >= MIN_CONSENSUS_WEIGHT
-      if (!published) {
-        return {
-          type: row.fuelType,
-          published: false as const,
-        }
-      }
-      return {
-        type: row.fuelType,
-        price: row.price,
-        sampleCount: row.sampleCount,
-        computedAt: toIsoOrNull(row.computedAt) ?? new Date().toISOString(),
-        published: true as const,
-      }
-    }),
+    observed,
     viewer: {
       authenticated: Boolean(userId),
       canReport: Boolean(userId),
@@ -131,7 +190,8 @@ stationsRoutes.post("/:id/reports", async (c) => {
   const body = await c.req.json().catch(() => null)
 
   const fuelType = body?.fuelType as FuelTypeApi | undefined
-  const agreed = body?.agreed
+  const outage = body?.outage === true
+  const agreed = outage ? false : body?.agreed
   const price =
     typeof body?.price === "number"
       ? body.price
@@ -142,10 +202,13 @@ stationsRoutes.post("/:id/reports", async (c) => {
   if (!fuelType || !FUEL_TYPES.includes(fuelType)) {
     return c.json({ error: "Carburant invalide" }, 400)
   }
-  if (typeof agreed !== "boolean") {
+
+  if (!outage && typeof agreed !== "boolean") {
     return c.json({ error: "Champ agreed requis" }, 400)
   }
+
   if (
+    !outage &&
     !agreed &&
     (price == null ||
       Number.isNaN(price) ||
@@ -186,7 +249,12 @@ stationsRoutes.post("/:id/reports", async (c) => {
     return c.json({ error: "Pas de prix officiel pour ce carburant" }, 404)
   }
 
-  if (!agreed && price != null && !isPriceInTolerance(price, official.price)) {
+  if (
+    !outage &&
+    !agreed &&
+    price != null &&
+    !isPriceInTolerance(price, official.price)
+  ) {
     return c.json(
       {
         error: `Prix hors fourchette (±10 % du prix officiel ${official.price.toFixed(3)} €)`,
@@ -196,7 +264,11 @@ stationsRoutes.post("/:id/reports", async (c) => {
   }
 
   const weight = reportWeight()
-  const storedPrice = agreed ? official.price : price!
+  const storedPrice = outage
+    ? null
+    : agreed
+      ? official.price
+      : price!
   const bucket = cooldownBucket()
 
   try {
@@ -206,7 +278,8 @@ stationsRoutes.post("/:id/reports", async (c) => {
       stationId,
       fuelType,
       price: storedPrice,
-      agreed,
+      agreed: Boolean(agreed),
+      outage,
       latitude: null,
       longitude: null,
       weight,
@@ -230,12 +303,16 @@ stationsRoutes.post("/:id/reports", async (c) => {
     throw error
   }
 
-  await recomputeObserved(stationId, fuelType)
+  await recomputeObserved(stationId, fuelType, official.price)
 
   return c.json({ ok: true })
 })
 
-async function recomputeObserved(stationId: string, fuelType: string) {
+async function recomputeObserved(
+  stationId: string,
+  fuelType: string,
+  officialPrice: number,
+) {
   const db = getDb()
   const since = new Date(Date.now() - CONSENSUS_WINDOW_MS)
 
@@ -250,31 +327,77 @@ async function recomputeObserved(stationId: string, fuelType: string) {
       ),
     )
 
+  const outageWeight = totalWeight(
+    rows.filter((row) => row.outage).map((row) => ({ value: 0, weight: row.weight })),
+  )
+
+  if (outageWeight >= MIN_OUTAGE_WEIGHT) {
+    await db
+      .insert(observedPrices)
+      .values({
+        stationId,
+        fuelType,
+        price: officialPrice,
+        sampleCount: outageWeight,
+        outage: true,
+        computedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [observedPrices.stationId, observedPrices.fuelType],
+        set: {
+          price: officialPrice,
+          sampleCount: outageWeight,
+          outage: true,
+          computedAt: new Date(),
+        },
+      })
+    return
+  }
+
   const samples = rows
-    .filter((row) => row.price != null)
+    .filter((row) => !row.outage && row.price != null)
     .map((row) => ({
       value: row.price as number,
       weight: row.weight,
     }))
 
   const consensus = computeConsensus(samples)
-  if (consensus == null) return
-
-  await db
-    .insert(observedPrices)
-    .values({
-      stationId,
-      fuelType,
-      price: consensus.price,
-      sampleCount: consensus.sampleCount,
-      computedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [observedPrices.stationId, observedPrices.fuelType],
-      set: {
+  if (consensus != null) {
+    await db
+      .insert(observedPrices)
+      .values({
+        stationId,
+        fuelType,
         price: consensus.price,
         sampleCount: consensus.sampleCount,
+        outage: false,
         computedAt: new Date(),
-      },
+      })
+      .onConflictDoUpdate({
+        target: [observedPrices.stationId, observedPrices.fuelType],
+        set: {
+          price: consensus.price,
+          sampleCount: consensus.sampleCount,
+          outage: false,
+          computedAt: new Date(),
+        },
+      })
+    return
+  }
+
+  // Plus assez d’avis rupture ni de prix → retomber sur le fallback officiel
+  await db
+    .update(observedPrices)
+    .set({
+      outage: false,
+      sampleCount: 0,
+      price: officialPrice,
+      computedAt: new Date(),
     })
+    .where(
+      and(
+        eq(observedPrices.stationId, stationId),
+        eq(observedPrices.fuelType, fuelType),
+      ),
+    )
 }

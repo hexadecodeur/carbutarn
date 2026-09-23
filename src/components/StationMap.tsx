@@ -2,6 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import * as maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import type { ListFuelType, Station } from "../types/station"
+import type { MapPriceSource } from "../utils/filterPrefs"
+import type { ObservedMapPrice } from "../services/participatoryApi"
 import { fetchMapTilesConfig } from "../services/mapApi"
 import { getFuelPriceRange, getPriceHeatColor } from "../utils/priceColor"
 
@@ -68,6 +70,9 @@ export type StationMapHandle = {
 type StationMapProps = {
   stations: Station[]
   selectedFuel: ListFuelType | null
+  mapPriceSource?: MapPriceSource
+  /** Prix / ruptures partagés (mode carte « Partagés ») */
+  sharedPrices?: ObservedMapPrice[]
   selectedStationId?: string | null
   onStationSelect?: (station: Station) => void
   onUserLocationChange?: (
@@ -83,6 +88,8 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     {
       stations,
       selectedFuel,
+      mapPriceSource = "official",
+      sharedPrices = [],
       selectedStationId = null,
       onStationSelect,
       onUserLocationChange,
@@ -170,15 +177,45 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
       markers.forEach((marker) => marker.remove())
       markers.clear()
 
+      const sharedByStation = new Map<string, ObservedMapPrice>()
+      if (selectedFuel && mapPriceSource === "shared") {
+        for (const row of sharedPrices) {
+          if (row.fuelType === selectedFuel) {
+            sharedByStation.set(row.stationId, row)
+          }
+        }
+      }
+
+      type PinPrice = { price: number; outage: boolean }
+
+      function pinForStation(station: Station): PinPrice | null {
+        if (selectedFuel === null) return null
+
+        if (mapPriceSource === "shared") {
+          const shared = sharedByStation.get(station.id)
+          if (shared?.outage) return { price: shared.price, outage: true }
+          if (shared && !shared.outage) {
+            return { price: shared.price, outage: false }
+          }
+          // Pas encore de consensus : fallback prix officiel
+          const official = station.fuels.find((f) => f.type === selectedFuel)
+          return official
+            ? { price: official.price, outage: false }
+            : null
+        }
+
+        const fuel = station.fuels.find((f) => f.type === selectedFuel)
+        return fuel ? { price: fuel.price, outage: false } : null
+      }
+
       const fuelPrices =
         selectedFuel === null
           ? []
           : stations
-              .map(
-                (station) =>
-                  station.fuels.find((fuel) => fuel.type === selectedFuel)
-                    ?.price,
-              )
+              .map((station) => {
+                const pin = pinForStation(station)
+                return pin && !pin.outage ? pin.price : undefined
+              })
               .filter((price): price is number => price !== undefined)
 
       const priceRange = getFuelPriceRange(fuelPrices)
@@ -194,11 +231,24 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
             .setLngLat([station.longitude, station.latitude])
             .addTo(map.current!)
         } else {
-          const fuel = station.fuels.find((f) => f.type === selectedFuel)
+          const pin = pinForStation(station)
 
-          if (fuel && priceRange) {
+          if (pin?.outage) {
+            const element = document.createElement("div")
+            element.className = isSelected
+              ? "cursor-pointer rounded-md border-2 border-amber bg-red-600 px-2 py-1 font-[Figtree] text-[10px] font-extrabold tracking-wide text-white shadow-sm ring-2 ring-amber/40"
+              : "cursor-pointer rounded-md border border-white/30 bg-red-600 px-2 py-1 font-[Figtree] text-[10px] font-extrabold tracking-wide text-white shadow-sm"
+            element.textContent = "RUPTURE"
+
+            marker = new maplibregl.Marker({
+              element,
+              anchor: "bottom",
+            })
+              .setLngLat([station.longitude, station.latitude])
+              .addTo(map.current!)
+          } else if (pin && priceRange) {
             const background = getPriceHeatColor(
-              fuel.price,
+              pin.price,
               priceRange.min,
               priceRange.max,
             )
@@ -210,7 +260,7 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
               : "cursor-pointer rounded-md border border-white/40 px-2 py-1 font-[Figtree] text-xs font-bold tracking-tight text-white shadow-sm"
 
             element.style.backgroundColor = background
-            element.textContent = `${fuel.price.toFixed(3)} €`
+            element.textContent = `${pin.price.toFixed(3)} €`
 
             marker = new maplibregl.Marker({
               element,
@@ -248,7 +298,15 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
         markers.forEach((marker) => marker.remove())
         markers.clear()
       }
-    }, [mapReady, stations, onStationSelect, selectedFuel, selectedStationId])
+    }, [
+      mapReady,
+      stations,
+      onStationSelect,
+      selectedFuel,
+      selectedStationId,
+      mapPriceSource,
+      sharedPrices,
+    ])
 
     useImperativeHandle(ref, () => ({
       locateUser(options) {

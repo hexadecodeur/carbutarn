@@ -22088,6 +22088,8 @@ var reports = pgTable(
     fuelType: text("fuel_type").notNull(),
     price: doublePrecision("price"),
     agreed: boolean("agreed").notNull(),
+    /** Signalement « Rupture » (pas de prix). */
+    outage: boolean("outage").notNull().default(false),
     /**
      * Anciennes colonnes GPS — plus écrites (minimisation).
      * Conservées nullable pour ne pas casser les bases existantes.
@@ -22120,6 +22122,8 @@ var observedPrices = pgTable(
     fuelType: text("fuel_type").notNull(),
     price: doublePrecision("price").notNull(),
     sampleCount: integer("sample_count").notNull(),
+    /** Consensus rupture (≥ 4 avis) — prioritaire sur le prix publié. */
+    outage: boolean("outage").notNull().default(false),
     computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table2) => [primaryKey({ columns: [table2.stationId, table2.fuelType] })]
@@ -22312,6 +22316,9 @@ async function requestMagicLink(email, ipHash) {
   });
   const appUrl = requireEnv("APP_URL").replace(/\/$/, "");
   const verifyUrl = `${appUrl}/#connexion-token=${encodeURIComponent(rawToken)}`;
+  if (!isProductionRuntime() && process.env.MAGIC_LINK_DEV_LOG === "1") {
+    console.info("[magic-link:dev]", verifyUrl);
+  }
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.EMAIL_FROM?.trim() || "CarbuTarn <onboarding@resend.dev>";
   if (!apiKey) {
@@ -22320,12 +22327,9 @@ async function requestMagicLink(email, ipHash) {
       throw new Error("EMAIL_SEND_FAILED");
     }
     console.info(
-      "[magic-link] RESEND_API_KEY missing \u2014 ouvre le fragment #connexion-token=\u2026 (token non logg\xE9). E-mail:",
+      "[magic-link] RESEND_API_KEY missing \u2014 utilise MAGIC_LINK_DEV_LOG=1 ou configure Resend. E-mail:",
       normalized
     );
-    if (process.env.MAGIC_LINK_DEV_LOG === "1") {
-      console.info("[magic-link:dev]", verifyUrl);
-    }
     return;
   }
   const resend = new Resend(apiKey);
@@ -22547,6 +22551,7 @@ authRoutes.get("/reports", async (c) => {
     stationId: reports.stationId,
     fuelType: reports.fuelType,
     agreed: reports.agreed,
+    outage: reports.outage,
     price: reports.price,
     createdAt: reports.createdAt,
     address: stationsCache.address,
@@ -22559,6 +22564,7 @@ authRoutes.get("/reports", async (c) => {
       stationId: row.stationId,
       fuelType: row.fuelType,
       agreed: row.agreed,
+      outage: row.outage,
       price: row.price,
       createdAt: toIsoOrNull(row.createdAt) ?? (/* @__PURE__ */ new Date()).toISOString(),
       station: {
@@ -22618,6 +22624,7 @@ function cooldownBucket(nowMs = Date.now()) {
 // server/lib/consensus.ts
 var CONSENSUS_PRICE_EPSILON = 0.01;
 var MIN_CONSENSUS_WEIGHT = 3;
+var MIN_OUTAGE_WEIGHT = 4;
 function totalWeight(samples) {
   return samples.reduce((sum, sample) => sum + sample.weight, 0);
 }
@@ -22752,6 +22759,23 @@ stationsRoutes.get("/", async (c) => {
     return c.json({ error: "Stations indisponibles" }, 502);
   }
 });
+stationsRoutes.get("/observed", async (c) => {
+  const db = getDb();
+  const rows = await db.select().from(observedPrices);
+  const prices = rows.filter((row) => {
+    if (row.outage) return row.sampleCount >= MIN_OUTAGE_WEIGHT;
+    return row.sampleCount >= MIN_CONSENSUS_WEIGHT;
+  }).map((row) => ({
+    stationId: row.stationId,
+    fuelType: row.fuelType,
+    price: row.price,
+    outage: row.outage,
+    sampleCount: row.sampleCount,
+    computedAt: toIsoOrNull(row.computedAt) ?? (/* @__PURE__ */ new Date()).toISOString()
+  }));
+  c.header("Cache-Control", "public, max-age=60");
+  return c.json({ prices });
+});
 stationsRoutes.get("/:id/prices", async (c) => {
   const stationId = c.req.param("id");
   if (!stationId || stationId.length > 64) {
@@ -22760,7 +22784,10 @@ stationsRoutes.get("/:id/prices", async (c) => {
   const db = getDb();
   const userId = c.get("userId");
   const official = await db.select().from(officialPrices).where(eq(officialPrices.stationId, stationId));
-  const observed = await db.select().from(observedPrices).where(eq(observedPrices.stationId, stationId));
+  const observedRows = await db.select().from(observedPrices).where(eq(observedPrices.stationId, stationId));
+  const observedByFuel = new Map(
+    observedRows.map((row) => [row.fuelType, row])
+  );
   let reportedFuelTypes = [];
   let lastReportAt;
   if (userId) {
@@ -22777,6 +22804,39 @@ stationsRoutes.get("/:id/prices", async (c) => {
     const iso = last ? toIsoOrNull(last.createdAt) : null;
     if (iso) lastReportAt = iso;
   }
+  const observed = official.map((off) => {
+    const row = observedByFuel.get(off.fuelType);
+    if (row?.outage && row.sampleCount >= MIN_OUTAGE_WEIGHT) {
+      return {
+        type: off.fuelType,
+        published: true,
+        source: "outage",
+        outage: true,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    if (row && !row.outage && row.sampleCount >= MIN_CONSENSUS_WEIGHT) {
+      return {
+        type: off.fuelType,
+        published: true,
+        source: "community",
+        outage: false,
+        price: row.price,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    return {
+      type: off.fuelType,
+      published: true,
+      source: "official",
+      outage: false,
+      price: off.price,
+      sampleCount: row?.sampleCount,
+      computedAt: toIsoOrNull(row?.computedAt ?? null) ?? void 0
+    };
+  });
   return c.json({
     stationId,
     official: official.map((row) => ({
@@ -22784,22 +22844,7 @@ stationsRoutes.get("/:id/prices", async (c) => {
       price: row.price,
       updatedAt: toIsoOrNull(row.updatedAt)
     })),
-    observed: observed.map((row) => {
-      const published = row.sampleCount >= MIN_CONSENSUS_WEIGHT;
-      if (!published) {
-        return {
-          type: row.fuelType,
-          published: false
-        };
-      }
-      return {
-        type: row.fuelType,
-        price: row.price,
-        sampleCount: row.sampleCount,
-        computedAt: toIsoOrNull(row.computedAt) ?? (/* @__PURE__ */ new Date()).toISOString(),
-        published: true
-      };
-    }),
+    observed,
     viewer: {
       authenticated: Boolean(userId),
       canReport: Boolean(userId),
@@ -22818,15 +22863,16 @@ stationsRoutes.post("/:id/reports", async (c) => {
   }
   const body = await c.req.json().catch(() => null);
   const fuelType = body?.fuelType;
-  const agreed = body?.agreed;
+  const outage = body?.outage === true;
+  const agreed = outage ? false : body?.agreed;
   const price = typeof body?.price === "number" ? body.price : typeof body?.price === "string" ? Number(body.price) : void 0;
   if (!fuelType || !FUEL_TYPES.includes(fuelType)) {
     return c.json({ error: "Carburant invalide" }, 400);
   }
-  if (typeof agreed !== "boolean") {
+  if (!outage && typeof agreed !== "boolean") {
     return c.json({ error: "Champ agreed requis" }, 400);
   }
-  if (!agreed && (price == null || Number.isNaN(price) || !Number.isFinite(price) || price <= 0 || price > 10)) {
+  if (!outage && !agreed && (price == null || Number.isNaN(price) || !Number.isFinite(price) || price <= 0 || price > 10)) {
     return c.json({ error: "Prix corrig\xE9 requis" }, 400);
   }
   const db = getDb();
@@ -22846,7 +22892,7 @@ stationsRoutes.post("/:id/reports", async (c) => {
   if (!official) {
     return c.json({ error: "Pas de prix officiel pour ce carburant" }, 404);
   }
-  if (!agreed && price != null && !isPriceInTolerance(price, official.price)) {
+  if (!outage && !agreed && price != null && !isPriceInTolerance(price, official.price)) {
     return c.json(
       {
         error: `Prix hors fourchette (\xB110 % du prix officiel ${official.price.toFixed(3)} \u20AC)`
@@ -22855,7 +22901,7 @@ stationsRoutes.post("/:id/reports", async (c) => {
     );
   }
   const weight = reportWeight();
-  const storedPrice = agreed ? official.price : price;
+  const storedPrice = outage ? null : agreed ? official.price : price;
   const bucket = cooldownBucket();
   try {
     await db.insert(reports).values({
@@ -22864,7 +22910,8 @@ stationsRoutes.post("/:id/reports", async (c) => {
       stationId,
       fuelType,
       price: storedPrice,
-      agreed,
+      agreed: Boolean(agreed),
+      outage,
       latitude: null,
       longitude: null,
       weight,
@@ -22882,10 +22929,10 @@ stationsRoutes.post("/:id/reports", async (c) => {
     }
     throw error;
   }
-  await recomputeObserved(stationId, fuelType);
+  await recomputeObserved(stationId, fuelType, official.price);
   return c.json({ ok: true });
 });
-async function recomputeObserved(stationId, fuelType) {
+async function recomputeObserved(stationId, fuelType, officialPrice) {
   const db = getDb();
   const since = new Date(Date.now() - CONSENSUS_WINDOW_MS);
   const rows = await db.select().from(reports).where(
@@ -22895,26 +22942,63 @@ async function recomputeObserved(stationId, fuelType) {
       gte(reports.createdAt, since)
     )
   );
-  const samples = rows.filter((row) => row.price != null).map((row) => ({
+  const outageWeight = totalWeight(
+    rows.filter((row) => row.outage).map((row) => ({ value: 0, weight: row.weight }))
+  );
+  if (outageWeight >= MIN_OUTAGE_WEIGHT) {
+    await db.insert(observedPrices).values({
+      stationId,
+      fuelType,
+      price: officialPrice,
+      sampleCount: outageWeight,
+      outage: true,
+      computedAt: /* @__PURE__ */ new Date()
+    }).onConflictDoUpdate({
+      target: [observedPrices.stationId, observedPrices.fuelType],
+      set: {
+        price: officialPrice,
+        sampleCount: outageWeight,
+        outage: true,
+        computedAt: /* @__PURE__ */ new Date()
+      }
+    });
+    return;
+  }
+  const samples = rows.filter((row) => !row.outage && row.price != null).map((row) => ({
     value: row.price,
     weight: row.weight
   }));
   const consensus = computeConsensus(samples);
-  if (consensus == null) return;
-  await db.insert(observedPrices).values({
-    stationId,
-    fuelType,
-    price: consensus.price,
-    sampleCount: consensus.sampleCount,
-    computedAt: /* @__PURE__ */ new Date()
-  }).onConflictDoUpdate({
-    target: [observedPrices.stationId, observedPrices.fuelType],
-    set: {
+  if (consensus != null) {
+    await db.insert(observedPrices).values({
+      stationId,
+      fuelType,
       price: consensus.price,
       sampleCount: consensus.sampleCount,
+      outage: false,
       computedAt: /* @__PURE__ */ new Date()
-    }
-  });
+    }).onConflictDoUpdate({
+      target: [observedPrices.stationId, observedPrices.fuelType],
+      set: {
+        price: consensus.price,
+        sampleCount: consensus.sampleCount,
+        outage: false,
+        computedAt: /* @__PURE__ */ new Date()
+      }
+    });
+    return;
+  }
+  await db.update(observedPrices).set({
+    outage: false,
+    sampleCount: 0,
+    price: officialPrice,
+    computedAt: /* @__PURE__ */ new Date()
+  }).where(
+    and(
+      eq(observedPrices.stationId, stationId),
+      eq(observedPrices.fuelType, fuelType)
+    )
+  );
 }
 
 // server/lib/syncOfficial.ts

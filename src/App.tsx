@@ -6,6 +6,10 @@ import MyReportsModal from "./components/MyReportsModal"
 import StationMap, { type StationMapHandle } from "./components/StationMap"
 import StationPanel from "./components/StationPanel"
 import { searchCities, type City } from "./services/cityApi"
+import {
+  fetchObservedMapPrices,
+  type ObservedMapPrice,
+} from "./services/participatoryApi"
 import { useAuth } from "./hooks/useAuth"
 import { useFilterPrefs } from "./hooks/useFilterPrefs"
 import { useLegalDoc } from "./hooks/useLegalDoc"
@@ -58,8 +62,10 @@ function App() {
     selectedFuel,
     sortBy,
     priceOrder,
+    mapPriceSource,
     handleSelectedFuelChange,
     handleSortByChange,
+    handleMapPriceSourceChange,
   } = useFilterPrefs()
   const { legalDocId, openLegal, closeLegal } = useLegalDoc()
   const {
@@ -111,11 +117,35 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [brandFilter, setBrandFilter] = useState<string | null>(null)
   const [myReportsOpen, setMyReportsOpen] = useState(false)
+  const [sharedPrices, setSharedPrices] = useState<ObservedMapPrice[]>([])
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() =>
     typeof window !== "undefined" ? loadRecentSearches() : [],
   )
   const [referenceLocation, setReferenceLocation] =
     useState<ReferenceLocation | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadShared() {
+      if (mapPriceSource !== "shared" || !selectedFuel) {
+        setSharedPrices([])
+        return
+      }
+      try {
+        const data = await fetchObservedMapPrices()
+        if (!cancelled) setSharedPrices(data.prices)
+      } catch (error) {
+        console.error("Prix partagés indisponibles :", error)
+        if (!cancelled) setSharedPrices([])
+      }
+    }
+
+    void loadShared()
+    return () => {
+      cancelled = true
+    }
+  }, [mapPriceSource, selectedFuel])
 
   useEffect(() => {
     let cancelled = false
@@ -358,8 +388,10 @@ function App() {
     selectedFuel,
     sortBy,
     priceOrder,
+    mapPriceSource,
     onSelectedFuelChange: handleSelectedFuelChange,
     onSortByChange: handleSortByChange,
+    onMapPriceSourceChange: handleMapPriceSourceChange,
     onSelectStation: selectStation,
     selectedStation: selectedWithDistance,
     userLocation: referenceLocation,
@@ -589,6 +621,8 @@ function App() {
               ref={mapRef}
               stations={visibleStations}
               selectedFuel={selectedFuel}
+              mapPriceSource={mapPriceSource}
+              sharedPrices={sharedPrices}
               selectedStationId={selectedStationId}
               onStationSelect={selectStation}
               onLocateStatus={setLocateStatus}

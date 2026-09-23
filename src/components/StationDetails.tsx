@@ -137,11 +137,17 @@ function StationDetails({
     return prices?.observed.find((row) => row.type === type) ?? null
   }
 
-  function isPublished(
+  function isOutage(
     observed: StationPricesResponse["observed"][number] | null,
   ) {
-    if (!observed) return false
-    return observed.published === true && typeof observed.price === "number"
+    return Boolean(observed?.published && observed.outage)
+  }
+
+  function displayPrice(
+    observed: StationPricesResponse["observed"][number] | null,
+  ): number | null {
+    if (!observed?.published || observed.outage) return null
+    return typeof observed.price === "number" ? observed.price : null
   }
 
   function alreadyReported(type: FuelType) {
@@ -150,8 +156,7 @@ function StationDetails({
 
   async function sendReport(
     fuelType: FuelType,
-    agreed: boolean,
-    price?: number,
+    options: { agreed?: boolean; price?: number; outage?: boolean },
   ) {
     setBusyFuel(fuelType)
     setActionError(null)
@@ -160,15 +165,18 @@ function StationDetails({
     try {
       await submitReport(station.id, {
         fuelType,
-        agreed,
-        price,
+        agreed: options.outage ? false : options.agreed,
+        price: options.price,
+        outage: options.outage,
       })
       setCorrectingFuel(null)
       setDraftPrice("")
       setActionMessage(
-        agreed
-          ? `Merci — ${fuelType} confirmé.`
-          : `Merci — prix ${fuelType} signalé.`,
+        options.outage
+          ? `Merci — rupture ${fuelType} signalée.`
+          : options.agreed
+            ? `Merci — ${fuelType} confirmé.`
+            : `Merci — prix ${fuelType} signalé.`,
       )
       await loadPrices()
     } catch (error) {
@@ -205,7 +213,15 @@ function StationDetails({
       onOpenAuth?.()
       return
     }
-    void sendReport(fuel.type, true)
+    void sendReport(fuel.type, { agreed: true })
+  }
+
+  function handleOutage(fuel: { type: FuelType }) {
+    if (!isAuthenticated) {
+      onOpenAuth?.()
+      return
+    }
+    void sendReport(fuel.type, { outage: true })
   }
 
   function handleCorrectionSubmit(event: FormEvent) {
@@ -219,7 +235,7 @@ function StationDetails({
       return
     }
 
-    void sendReport(correctingFuel, false, value)
+    void sendReport(correctingFuel, { agreed: false, price: value })
   }
 
   return (
@@ -302,8 +318,8 @@ function StationDetails({
             Prix constatés
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted">
-            Consensus 48 h : groupe de prix à ±0,010 €/L, médiane du groupe.
-            Publication dès 3 avis distincts.
+            Par défaut : prix officiel. Consensus prix (±0,010 €/L) dès 3 avis ;
+            rupture dès 4 avis. Un nouveau consensus remplace le précédent.
           </p>
 
           {!isAuthenticated && onOpenAuth && (
@@ -315,7 +331,7 @@ function StationDetails({
               >
                 Connecte-toi
               </button>{" "}
-              pour confirmer ou corriger un prix.
+              pour confirmer, corriger ou signaler une rupture.
             </p>
           )}
 
@@ -351,6 +367,9 @@ function StationDetails({
               const reported = alreadyReported(fuel.type)
               const busy = busyFuel === fuel.type
               const correcting = correctingFuel === fuel.type
+              const outage = isOutage(observed)
+              const price = displayPrice(observed)
+              const source = observed?.source ?? "official"
 
               return (
                 <div
@@ -363,34 +382,40 @@ function StationDetails({
                         {fuel.type}
                       </p>
                       <p className="mt-0.5 text-xs text-muted">
-                        {isPublished(observed)
-                          ? `${observed!.sampleCount ?? "—"} avis`
-                          : observed
-                            ? "Avis en cours de consensus"
-                            : "Pas encore d’avis"}
+                        {outage
+                          ? `${observed?.sampleCount ?? "—"} avis · Rupture`
+                          : source === "community"
+                            ? `${observed?.sampleCount ?? "—"} avis`
+                            : source === "official"
+                              ? "Prix officiel (pas encore modifié)"
+                              : "Avis en cours de consensus"}
                       </p>
-                      {isPublished(observed) && observed!.computedAt && (
+                      {observed?.computedAt && source !== "official" && (
                         <p className="mt-0.5 text-xs text-muted">
-                          {formatDate(observed!.computedAt)}
+                          {formatDate(observed.computedAt)}
                         </p>
                       )}
                     </div>
-                    <p className="font-display text-lg font-bold tabular-nums text-ink">
-                      {isPublished(observed) &&
-                      observed &&
-                      typeof observed.price === "number" ? (
-                        <>
-                          {observed.price.toFixed(3)}
-                          <span className="ml-1 text-xs font-semibold text-muted">
-                            €/L
+                    {outage ? (
+                      <p className="font-display text-sm font-extrabold tracking-wide text-red-600 dark:text-red-400">
+                        RUPTURE
+                      </p>
+                    ) : (
+                      <p className="font-display text-lg font-bold tabular-nums text-ink">
+                        {price != null ? (
+                          <>
+                            {price.toFixed(3)}
+                            <span className="ml-1 text-xs font-semibold text-muted">
+                              €/L
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-semibold text-muted">
+                            —
                           </span>
-                        </>
-                      ) : (
-                        <span className="text-sm font-semibold text-muted">
-                          —
-                        </span>
-                      )}
-                    </p>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   {correcting ? (
@@ -434,12 +459,12 @@ function StationDetails({
                       </div>
                     </form>
                   ) : (
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
                         disabled={busy || reported}
                         onClick={() => handleConfirm(fuel)}
-                        className={`min-h-9 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
+                        className={`min-h-9 min-w-0 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
                           reported
                             ? "cursor-not-allowed bg-paper-deep text-muted/70 ring-line"
                             : "bg-surface text-petrol ring-petrol/30 hover:bg-petrol/10"
@@ -451,13 +476,25 @@ function StationDetails({
                         type="button"
                         disabled={busy || reported}
                         onClick={() => startCorrection(fuel)}
-                        className={`min-h-9 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
+                        className={`min-h-9 min-w-0 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
                           reported
                             ? "cursor-not-allowed bg-paper-deep text-muted/70 ring-line"
                             : "bg-surface text-ink-soft ring-line hover:bg-paper-deep"
                         }`}
                       >
                         Pas d&apos;accord
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || reported}
+                        onClick={() => handleOutage(fuel)}
+                        className={`min-h-9 min-w-0 flex-1 rounded-lg px-2 text-xs font-semibold ring-1 transition ${
+                          reported
+                            ? "cursor-not-allowed bg-paper-deep text-muted/70 ring-line"
+                            : "bg-surface text-red-700 ring-red-600/30 hover:bg-red-600/10 dark:text-red-400"
+                        }`}
+                      >
+                        Rupture
                       </button>
                     </div>
                   )}
@@ -495,7 +532,7 @@ function StationDetails({
         <p className="mt-6 border-t border-line/80 pt-4 text-xs leading-relaxed text-muted">
           Prix officiels : données publiques (via API CarbuTarn). Enseignes :
           OpenStreetMap. Prix constatés : compte, délai 2 h, fourchette ±10 %,
-          consensus ±0,010 €/L.
+          consensus prix 3 avis / rupture 4 avis.
         </p>
       </div>
     </div>

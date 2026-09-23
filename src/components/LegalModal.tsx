@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { LEGAL_DOCS, LEGAL_LINKS, type LegalDocId } from "../content/legal"
+import { linkifyLegalText } from "../utils/legalLinks"
 
 type LegalModalProps = {
   docId: LegalDocId
@@ -98,7 +99,7 @@ function LegalModal({ docId, onClose, onNavigate }: LegalModalProps) {
                       key={`${section.heading}-${index}`}
                       className="text-sm leading-relaxed text-ink-soft"
                     >
-                      {paragraph}
+                      {linkifyLegalText(paragraph)}
                     </p>
                   ))}
                 </div>

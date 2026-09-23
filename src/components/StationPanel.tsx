@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode, type HTMLAttributes } from "react"
 import type { ListFuelType, PriceSortOrder, SortBy, Station } from "../types/station"
 import type { LegalDocId } from "../content/legal"
 import type { AuthUser } from "../hooks/useAuth"
+import type { MapPriceSource } from "../utils/filterPrefs"
 import StationFilters from "./StationFilters"
 import StationList from "./StationList"
 import StationDetails from "./StationDetails"
@@ -25,8 +26,10 @@ type StationPanelProps = {
   selectedFuel: ListFuelType | null
   sortBy: SortBy
   priceOrder: PriceSortOrder
+  mapPriceSource: MapPriceSource
   onSelectedFuelChange: (fuel: ListFuelType | null) => void
   onSortByChange: (sortBy: SortBy) => void
+  onMapPriceSourceChange: (source: MapPriceSource) => void
   onSelectStation: (station: Station) => void
   selectedStation: Station | null
   userLocation: UserLocation | null
@@ -60,8 +63,10 @@ function StationPanel({
   selectedFuel,
   sortBy,
   priceOrder,
+  mapPriceSource,
   onSelectedFuelChange,
   onSortByChange,
+  onMapPriceSourceChange,
   onSelectStation,
   selectedStation,
   userLocation,
@@ -261,8 +266,10 @@ function StationPanel({
               selectedFuel={selectedFuel}
               sortBy={sortBy}
               priceOrder={priceOrder}
+              mapPriceSource={mapPriceSource}
               onSelectedFuelChange={onSelectedFuelChange}
               onSortByChange={onSortByChange}
+              onMapPriceSourceChange={onMapPriceSourceChange}
             />
           </div>
         </div>

@@ -4,12 +4,16 @@
  */
 import type { FuelType } from "../types/station"
 
+export type ObservedSource = "official" | "community" | "outage"
+
 export type StationPricesResponse = {
   stationId: string
   official: { type: string; price: number; updatedAt: string | null }[]
   observed: {
     type: string
     published: boolean
+    source?: ObservedSource
+    outage?: boolean
     price?: number
     sampleCount?: number
     computedAt?: string
@@ -20,6 +24,15 @@ export type StationPricesResponse = {
     reportedFuelTypes: string[]
     lastReportAt?: string
   }
+}
+
+export type ObservedMapPrice = {
+  stationId: string
+  fuelType: string
+  price: number
+  outage: boolean
+  sampleCount: number
+  computedAt: string
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -110,8 +123,9 @@ export function submitReport(
   stationId: string,
   payload: {
     fuelType: FuelType
-    agreed: boolean
+    agreed?: boolean
     price?: number
+    outage?: boolean
   },
 ) {
   return api<{ ok: true }>(
@@ -123,11 +137,16 @@ export function submitReport(
   )
 }
 
+export function fetchObservedMapPrices() {
+  return api<{ prices: ObservedMapPrice[] }>("/stations/observed")
+}
+
 export type MyReport = {
   id: string
   stationId: string
   fuelType: string
   agreed: boolean
+  outage?: boolean
   price: number | null
   createdAt: string
   station: {

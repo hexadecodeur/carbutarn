@@ -28,6 +28,9 @@ function formatPrice(price: number): string {
 }
 
 function reportSummary(report: MyReport): string {
+  if (report.outage) {
+    return `${report.fuelType} · Rupture`
+  }
   if (report.agreed) {
     return `${report.fuelType} · Prix OK`
   }
@@ -205,7 +208,11 @@ function MyReportsModal({
                       <p className="truncate text-xs text-muted">{subtitle}</p>
                       <p
                         className={`text-xs font-semibold ${
-                          report.agreed ? "text-petrol" : "text-amber"
+                          report.outage
+                            ? "text-red-600 dark:text-red-400"
+                            : report.agreed
+                              ? "text-petrol"
+                              : "text-amber"
                         }`}
                       >
                         {reportSummary(report)}

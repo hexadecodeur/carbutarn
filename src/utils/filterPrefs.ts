@@ -3,16 +3,20 @@ import { LIST_FUEL_TYPES } from "../constants/filters"
 
 const STORAGE_KEY = "carbutarn:filter-prefs"
 
+export type MapPriceSource = "official" | "shared"
+
 export type FilterPrefs = {
   selectedFuel: ListFuelType | null
   sortBy: SortBy
   priceOrder: PriceSortOrder
+  mapPriceSource: MapPriceSource
 }
 
 export const DEFAULT_FILTER_PREFS: FilterPrefs = {
   selectedFuel: null,
   sortBy: "distance",
   priceOrder: "asc",
+  mapPriceSource: "official",
 }
 
 function isListFuel(value: unknown): value is ListFuelType {
@@ -28,6 +32,10 @@ function isSortBy(value: unknown): value is SortBy {
 
 function isPriceOrder(value: unknown): value is PriceSortOrder {
   return value === "asc" || value === "desc"
+}
+
+function isMapPriceSource(value: unknown): value is MapPriceSource {
+  return value === "official" || value === "shared"
 }
 
 export function loadFilterPrefs(): FilterPrefs {
@@ -51,11 +59,15 @@ export function loadFilterPrefs(): FilterPrefs {
     const priceOrder = isPriceOrder(data.priceOrder)
       ? data.priceOrder
       : "asc"
+    const mapPriceSource = isMapPriceSource(data.mapPriceSource)
+      ? data.mapPriceSource
+      : "official"
 
     return {
       selectedFuel,
       sortBy: selectedFuel === null && sortBy === "price" ? "distance" : sortBy,
       priceOrder,
+      mapPriceSource,
     }
   } catch {
     return { ...DEFAULT_FILTER_PREFS }

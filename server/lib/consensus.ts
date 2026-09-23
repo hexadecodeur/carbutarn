@@ -6,7 +6,10 @@
  */
 
 export const CONSENSUS_PRICE_EPSILON = 0.01
+/** Consensus prix (OK / correction). */
 export const MIN_CONSENSUS_WEIGHT = 3
+/** Consensus rupture de stock. */
+export const MIN_OUTAGE_WEIGHT = 4
 
 export type ConsensusSample = { value: number; weight: number }
 

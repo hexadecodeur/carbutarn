@@ -83,6 +83,8 @@ export const reports = pgTable(
     fuelType: text("fuel_type").notNull(),
     price: doublePrecision("price"),
     agreed: boolean("agreed").notNull(),
+    /** Signalement « Rupture » (pas de prix). */
+    outage: boolean("outage").notNull().default(false),
     /**
      * Anciennes colonnes GPS — plus écrites (minimisation).
      * Conservées nullable pour ne pas casser les bases existantes.
@@ -120,6 +122,8 @@ export const observedPrices = pgTable(
     fuelType: text("fuel_type").notNull(),
     price: doublePrecision("price").notNull(),
     sampleCount: integer("sample_count").notNull(),
+    /** Consensus rupture (≥ 4 avis) — prioritaire sur le prix publié. */
+    outage: boolean("outage").notNull().default(false),
     computedAt: timestamp("computed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

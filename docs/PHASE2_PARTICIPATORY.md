@@ -48,9 +48,10 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 3. 1 signalement / station / carburant / bucket 2 h / compte (contrainte unique SQL)
 4. Fourchette ±10 % du prix officiel si correction
 5. Poids fixe 1 (GPS client non crédité — spoofable)
-6. Consensus 48 h : regrouper les prix à ±0,010 €/L ; publier dès poids ≥ 3
-7. Prix non publiés : absents du JSON public
-8. Réputation / géofence attestée = V2
+6. Consensus prix 48 h : regrouper les prix à ±0,010 €/L ; publier dès poids ≥ 3 (un nouveau consensus remplace le précédent)
+7. Consensus rupture : ≥ 4 avis « Rupture » dans la fenêtre 48 h
+8. Prix non publiés : fallback affichage = prix officiel ; absents de `/stations/observed`
+9. Réputation / géofence attestée = V2
 
 ## Endpoints
 
@@ -64,8 +65,9 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 | `POST` | `/api/auth/logout` | Cookie — bump `session_version` |
 | `DELETE` | `/api/auth/account` | Cookie — suppression compte + reports |
 | `GET` | `/api/stations` | Non — proxy Open Data |
-| `GET` | `/api/stations/:id/prices` | Optionnel |
-| `POST` | `/api/stations/:id/reports` | Cookie — `{ fuelType, agreed, price? }` |
+| `GET` | `/api/stations/:id/prices` | Optionnel — fallback officiel si pas de consensus ; rupture si ≥ 4 avis |
+| `POST` | `/api/stations/:id/reports` | Cookie — `{ fuelType, agreed?, price?, outage? }` |
+| `GET` | `/api/stations/observed` | Non — prix/ruptures publiés (carte « Partagés ») |
 | `GET` | `/api/cities?q=` | Non — proxy geo.api |
 | `GET` | `/api/cron/sync-official` | `Authorization: Bearer CRON_SECRET` uniquement |
 | `GET` | `/api/health` | Non |

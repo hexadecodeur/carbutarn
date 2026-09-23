@@ -127,6 +127,7 @@ authRoutes.get("/reports", async (c) => {
       stationId: reports.stationId,
       fuelType: reports.fuelType,
       agreed: reports.agreed,
+      outage: reports.outage,
       price: reports.price,
       createdAt: reports.createdAt,
       address: stationsCache.address,
@@ -145,6 +146,7 @@ authRoutes.get("/reports", async (c) => {
       stationId: row.stationId,
       fuelType: row.fuelType,
       agreed: row.agreed,
+      outage: row.outage,
       price: row.price,
       createdAt: toIsoOrNull(row.createdAt) ?? new Date().toISOString(),
       station: {

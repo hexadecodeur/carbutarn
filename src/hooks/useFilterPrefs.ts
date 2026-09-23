@@ -4,6 +4,7 @@ import {
   DEFAULT_FILTER_PREFS,
   loadFilterPrefs,
   saveFilterPrefs,
+  type MapPriceSource,
 } from "../utils/filterPrefs"
 
 export function useFilterPrefs() {
@@ -22,10 +23,15 @@ export function useFilterPrefs() {
       ? loadFilterPrefs().priceOrder
       : DEFAULT_FILTER_PREFS.priceOrder,
   )
+  const [mapPriceSource, setMapPriceSource] = useState<MapPriceSource>(() =>
+    typeof window !== "undefined"
+      ? loadFilterPrefs().mapPriceSource
+      : DEFAULT_FILTER_PREFS.mapPriceSource,
+  )
 
   useEffect(() => {
-    saveFilterPrefs({ selectedFuel, sortBy, priceOrder })
-  }, [selectedFuel, sortBy, priceOrder])
+    saveFilterPrefs({ selectedFuel, sortBy, priceOrder, mapPriceSource })
+  }, [selectedFuel, sortBy, priceOrder, mapPriceSource])
 
   function handleSelectedFuelChange(fuel: ListFuelType | null) {
     setSelectedFuel(fuel)
@@ -49,11 +55,17 @@ export function useFilterPrefs() {
     setSortBy(next)
   }
 
+  function handleMapPriceSourceChange(source: MapPriceSource) {
+    setMapPriceSource(source)
+  }
+
   return {
     selectedFuel,
     sortBy,
     priceOrder,
+    mapPriceSource,
     handleSelectedFuelChange,
     handleSortByChange,
+    handleMapPriceSourceChange,
   }
 }
