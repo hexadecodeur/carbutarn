@@ -207,37 +207,48 @@ async function fetchFromEndpoint(
 /**
  * Récupère enseignes + coordonnées OSM des stations du Tarn,
  * jointes via ref:FR:prix-carburants (= id Open Data).
- * Cache / snapshot d’abord (rapide), puis rafraîchissement Overpass.
+ * Cache / snapshot d’abord. Overpass uniquement si VITE_OSM_OVERPASS=1
+ * (désactivé par défaut en prod store — snapshot local suffit).
  */
 export async function fetchStationBrands(
   onFresh?: (brands: Map<string, StationOsmInfo>) => void,
 ): Promise<Map<string, StationOsmInfo>> {
+  const allowOverpass = import.meta.env.VITE_OSM_OVERPASS === "1"
+
   const cached = loadCachedBrands()
   if (cached && cached.size > 0) {
-    void refreshBrandsFromOverpass()
-      .then((fresh) => {
-        if (fresh.size > 0) onFresh?.(fresh)
-      })
-      .catch(() => {
-        /* déjà en cache */
-      })
+    if (allowOverpass) {
+      void refreshBrandsFromOverpass()
+        .then((fresh) => {
+          if (fresh.size > 0) onFresh?.(fresh)
+        })
+        .catch(() => {
+          /* déjà en cache */
+        })
+    }
     return cached
   }
 
   const staticBrands = await loadStaticBrands()
   if (staticBrands) {
     saveCachedBrands(staticBrands)
-    void refreshBrandsFromOverpass()
-      .then((fresh) => {
-        if (fresh.size > 0) onFresh?.(fresh)
-      })
-      .catch(() => {
-        /* snapshot suffit */
-      })
+    if (allowOverpass) {
+      void refreshBrandsFromOverpass()
+        .then((fresh) => {
+          if (fresh.size > 0) onFresh?.(fresh)
+        })
+        .catch(() => {
+          /* snapshot suffit */
+        })
+    }
     return staticBrands
   }
 
-  return refreshBrandsFromOverpass()
+  if (allowOverpass) {
+    return refreshBrandsFromOverpass()
+  }
+
+  return new Map()
 }
 
 async function refreshBrandsFromOverpass(): Promise<

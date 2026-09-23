@@ -671,13 +671,13 @@ var require_timing_safe_equal = __commonJS({
   "node_modules/.pnpm/standardwebhooks@1.1.1/node_modules/standardwebhooks/dist/timing_safe_equal.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.timingSafeEqual = timingSafeEqual;
+    exports.timingSafeEqual = timingSafeEqual2;
     function assert(expr, msg = "") {
       if (!expr) {
         throw new Error(msg);
       }
     }
-    function timingSafeEqual(a2, b2) {
+    function timingSafeEqual2(a2, b2) {
       if (a2.byteLength !== b2.byteLength) {
         return false;
       }
@@ -1048,14 +1048,14 @@ var Response2 = class _Response {
     }
   }
   get headers() {
-    const cache2 = this[cacheKey];
-    if (cache2) {
-      if (!(cache2[2] instanceof Headers)) {
-        cache2[2] = new Headers(
-          cache2[2] || { "content-type": "text/plain; charset=UTF-8" }
+    const cache3 = this[cacheKey];
+    if (cache3) {
+      if (!(cache3[2] instanceof Headers)) {
+        cache3[2] = new Headers(
+          cache3[2] || { "content-type": "text/plain; charset=UTF-8" }
         );
       }
-      return cache2[2];
+      return cache3[2];
     }
     return this[getResponseCache]().headers;
   }
@@ -1444,13 +1444,13 @@ var handle = (app2) => {
 // node_modules/.pnpm/hono@4.13.8/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
   return (context, next) => {
-    let index = -1;
+    let index2 = -1;
     return dispatch(0);
     async function dispatch(i) {
-      if (i <= index) {
+      if (i <= index2) {
         throw new Error("next() called multiple times");
       }
-      index = i;
+      index2 = i;
       let res;
       let isError = false;
       let handler;
@@ -1483,6 +1483,39 @@ var compose = (middleware, onError, onNotFound) => {
       return context;
     }
   };
+};
+
+// node_modules/.pnpm/hono@4.13.8/node_modules/hono/dist/http-exception.js
+var HTTPException = class extends Error {
+  res;
+  status;
+  /**
+   * Creates an instance of `HTTPException`.
+   * @param status - HTTP status code for the exception. Defaults to 500.
+   * @param options - Additional options for the exception.
+   */
+  constructor(status = 500, options) {
+    super(options?.message, { cause: options?.cause });
+    this.res = options?.res;
+    this.status = status;
+  }
+  /**
+   * Returns the response object associated with the exception.
+   * If a response object is not provided, a new response is created with the error message and status code.
+   * @returns The response object.
+   */
+  getResponse() {
+    if (this.res) {
+      const newResponse = new Response(this.res.body, {
+        status: this.status,
+        headers: this.res.headers
+      });
+      return newResponse;
+    }
+    return new Response(this.message, {
+      status: this.status
+    });
+  }
 };
 
 // node_modules/.pnpm/hono@4.13.8/node_modules/hono/dist/request/constants.js
@@ -1579,8 +1612,8 @@ var handleParsingNestedValues = (form, key, value, state) => {
   if (keys.length > MAX_NESTING_DEPTH + 1) {
     throwNestingLimitExceeded();
   }
-  keys.forEach((key2, index) => {
-    if (index === keys.length - 1) {
+  keys.forEach((key2, index2) => {
+    if (index2 === keys.length - 1) {
       nestedForm[key2] = value;
     } else {
       if (!nestedForm[key2] || typeof nestedForm[key2] !== "object" || Array.isArray(nestedForm[key2]) || nestedForm[key2] instanceof File) {
@@ -1612,8 +1645,8 @@ var splitRoutingPath = (routePath) => {
 };
 var extractGroupsFromPath = (path) => {
   const groups = [];
-  path = path.replace(/\{[^}]+\}/g, (match2, index) => {
-    const mark = `@${index}`;
+  path = path.replace(/\{[^}]+\}/g, (match2, index2) => {
+    const mark = `@${index2}`;
     groups.push([mark, match2]);
     return mark;
   });
@@ -2961,8 +2994,8 @@ function match(method, path) {
     if (!match3) {
       return [[], emptyParam];
     }
-    const index = match3.indexOf("", 1);
-    return [matcher[1][index], match3];
+    const index2 = match3.indexOf("", 1);
+    return [matcher[1][index2], match3];
   });
   this.match = match2;
   return match2(method, path);
@@ -2998,7 +3031,7 @@ var Node = class _Node {
   #index;
   #varIndex;
   #children = createNullObject();
-  insert(tokens, index, paramMap, context, isStatic) {
+  insert(tokens, index2, paramMap, context, isStatic) {
     let node = this;
     for (let i = 0, len = tokens.length; i < len; i++) {
       const token = tokens[i];
@@ -3053,7 +3086,7 @@ var Node = class _Node {
     if (node.#index !== void 0) {
       throw PATH_ERROR;
     }
-    node.#index = isStatic ? -1 : index;
+    node.#index = isStatic ? -1 : index2;
   }
   buildRegExpStr() {
     const childKeys = Object.keys(this.#children).sort(compareKey);
@@ -3589,6 +3622,56 @@ var cors = (options) => {
   };
 };
 
+// node_modules/.pnpm/hono@4.13.8/node_modules/hono/dist/middleware/body-limit/index.js
+var ERROR_MESSAGE = "Payload Too Large";
+var bodyLimit = (options) => {
+  const onError = options.onError || (() => {
+    const res = new Response(ERROR_MESSAGE, {
+      status: 413
+    });
+    throw new HTTPException(413, { res });
+  });
+  const maxSize = options.maxSize;
+  return async function bodyLimit2(c, next) {
+    if (!c.req.raw.body) {
+      return next();
+    }
+    const hasTransferEncoding = c.req.raw.headers.has("transfer-encoding");
+    const hasContentLength = c.req.raw.headers.has("content-length");
+    if (hasContentLength && !hasTransferEncoding) {
+      const contentLength = parseInt(c.req.raw.headers.get("content-length") || "0", 10);
+      return contentLength > maxSize ? onError(c) : next();
+    }
+    let size = 0;
+    const chunks = [];
+    const rawReader = c.req.raw.body.getReader();
+    for (; ; ) {
+      const { done, value } = await rawReader.read();
+      if (done) {
+        break;
+      }
+      size += value.length;
+      if (size > maxSize) {
+        return onError(c);
+      }
+      chunks.push(value);
+    }
+    const requestInit = {
+      body: new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(chunk);
+          }
+          controller.close();
+        }
+      }),
+      duplex: "half"
+    };
+    c.req.raw = new Request(c.req.raw, requestInit);
+    return next();
+  };
+};
+
 // node_modules/.pnpm/hono@4.13.8/node_modules/hono/dist/utils/cookie.js
 var validCookieNameRegEx = /^[\w!#$%&'*.^`|~+-]+$/;
 var relaxedCookieNameRegEx = /^[!#-:<>-[\]-~]+$/;
@@ -3760,7 +3843,7 @@ var deleteCookie = (c, name, opt) => {
 };
 
 // server/lib/auth.ts
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash as createHash2, randomBytes, randomUUID } from "node:crypto";
 
 // node_modules/.pnpm/jose@6.2.12/node_modules/jose/dist/webapi/lib/buffer_utils.js
 var encoder = new TextEncoder();
@@ -5816,8 +5899,8 @@ function haveSameKeys(left, right) {
   if (leftKeys.length !== rightKeys.length) {
     return false;
   }
-  for (const [index, key] of leftKeys.entries()) {
-    if (key !== rightKeys[index]) {
+  for (const [index2, key] of leftKeys.entries()) {
+    if (key !== rightKeys[index2]) {
       return false;
     }
   }
@@ -18252,6 +18335,118 @@ var SelectionProxyHandler = class _SelectionProxyHandler {
   }
 };
 
+// node_modules/.pnpm/drizzle-orm@0.45.3_@neondatabase+serverless@1.1.0/node_modules/drizzle-orm/pg-core/indexes.js
+var IndexBuilderOn = class {
+  constructor(unique, name) {
+    this.unique = unique;
+    this.name = name;
+  }
+  static [entityKind] = "PgIndexBuilderOn";
+  on(...columns) {
+    return new IndexBuilder(
+      columns.map((it2) => {
+        if (is(it2, SQL)) {
+          return it2;
+        }
+        it2 = it2;
+        const clonedIndexedColumn = new IndexedColumn(it2.name, !!it2.keyAsName, it2.columnType, it2.indexConfig);
+        it2.indexConfig = JSON.parse(JSON.stringify(it2.defaultConfig));
+        return clonedIndexedColumn;
+      }),
+      this.unique,
+      false,
+      this.name
+    );
+  }
+  onOnly(...columns) {
+    return new IndexBuilder(
+      columns.map((it2) => {
+        if (is(it2, SQL)) {
+          return it2;
+        }
+        it2 = it2;
+        const clonedIndexedColumn = new IndexedColumn(it2.name, !!it2.keyAsName, it2.columnType, it2.indexConfig);
+        it2.indexConfig = it2.defaultConfig;
+        return clonedIndexedColumn;
+      }),
+      this.unique,
+      true,
+      this.name
+    );
+  }
+  /**
+   * Specify what index method to use. Choices are `btree`, `hash`, `gist`, `spgist`, `gin`, `brin`, or user-installed access methods like `bloom`. The default method is `btree.
+   *
+   * If you have the `pg_vector` extension installed in your database, you can use the `hnsw` and `ivfflat` options, which are predefined types.
+   *
+   * **You can always specify any string you want in the method, in case Drizzle doesn't have it natively in its types**
+   *
+   * @param method The name of the index method to be used
+   * @param columns
+   * @returns
+   */
+  using(method, ...columns) {
+    return new IndexBuilder(
+      columns.map((it2) => {
+        if (is(it2, SQL)) {
+          return it2;
+        }
+        it2 = it2;
+        const clonedIndexedColumn = new IndexedColumn(it2.name, !!it2.keyAsName, it2.columnType, it2.indexConfig);
+        it2.indexConfig = JSON.parse(JSON.stringify(it2.defaultConfig));
+        return clonedIndexedColumn;
+      }),
+      this.unique,
+      true,
+      this.name,
+      method
+    );
+  }
+};
+var IndexBuilder = class {
+  static [entityKind] = "PgIndexBuilder";
+  /** @internal */
+  config;
+  constructor(columns, unique, only, name, method = "btree") {
+    this.config = {
+      name,
+      columns,
+      unique,
+      only,
+      method
+    };
+  }
+  concurrently() {
+    this.config.concurrently = true;
+    return this;
+  }
+  with(obj) {
+    this.config.with = obj;
+    return this;
+  }
+  where(condition) {
+    this.config.where = condition;
+    return this;
+  }
+  /** @internal */
+  build(table2) {
+    return new Index(this.config, table2);
+  }
+};
+var Index = class {
+  static [entityKind] = "PgIndex";
+  config;
+  constructor(config, table2) {
+    this.config = { ...config, table: table2 };
+  }
+};
+function index(name) {
+  return new IndexBuilderOn(false, name);
+}
+function uniqueIndex(name) {
+  return new IndexBuilderOn(true, name);
+}
+
 // node_modules/.pnpm/drizzle-orm@0.45.3_@neondatabase+serverless@1.1.0/node_modules/drizzle-orm/casing.js
 function toSnakeCase(input) {
   const words = input.replace(/['\u2019]/g, "").match(/[\da-z]+|[A-Z]+(?![a-z])|[A-Z][\da-z]+/g) ?? [];
@@ -18469,8 +18664,8 @@ var PgDialect = class {
       return void 0;
     }
     const joinsArray = [];
-    for (const [index, joinMeta] of joins.entries()) {
-      if (index === 0) {
+    for (const [index2, joinMeta] of joins.entries()) {
+      if (index2 === 0) {
         joinsArray.push(sql` `);
       }
       const table2 = joinMeta.table;
@@ -18497,7 +18692,7 @@ var PgDialect = class {
           sql`${sql.raw(joinMeta.joinType)} join${lateralSql} ${table2}${onSql}`
         );
       }
-      if (index < joins.length - 1) {
+      if (index2 < joins.length - 1) {
         joinsArray.push(sql` `);
       }
     }
@@ -21396,12 +21591,12 @@ async function hashQuery(sql2, params) {
 
 // node_modules/.pnpm/drizzle-orm@0.45.3_@neondatabase+serverless@1.1.0/node_modules/drizzle-orm/pg-core/session.js
 var PgPreparedQuery = class {
-  constructor(query, cache2, queryMetadata, cacheConfig) {
+  constructor(query, cache3, queryMetadata, cacheConfig) {
     this.query = query;
-    this.cache = cache2;
+    this.cache = cache3;
     this.queryMetadata = queryMetadata;
     this.cacheConfig = cacheConfig;
-    if (cache2 && cache2.strategy() === "all" && cacheConfig === void 0) {
+    if (cache3 && cache3.strategy() === "all" && cacheConfig === void 0) {
       this.cacheConfig = { enable: true, autoInvalidate: true };
     }
     if (!this.cacheConfig?.enable) {
@@ -21564,8 +21759,8 @@ var queryConfig = {
   fullResults: true
 };
 var NeonHttpPreparedQuery = class extends PgPreparedQuery {
-  constructor(client, query, logger, cache2, queryMetadata, cacheConfig, fields, _isResponseInArrayMode, customResultMapper) {
-    super(query, cache2, queryMetadata, cacheConfig);
+  constructor(client, query, logger, cache3, queryMetadata, cacheConfig, fields, _isResponseInArrayMode, customResultMapper) {
+    super(query, cache3, queryMetadata, cacheConfig);
     this.client = client;
     this.logger = logger;
     this.fields = fields;
@@ -21843,16 +22038,27 @@ var users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   reputationScore: real("reputation_score").notNull().default(1),
+  /** Incrémenté au logout / suppression → invalide tous les JWT émis. */
+  sessionVersion: integer("session_version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
-var magicLinkTokens = pgTable("magic_link_tokens", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull(),
-  tokenHash: text("token_hash").notNull().unique(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+var magicLinkTokens = pgTable(
+  "magic_link_tokens",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** Hash SHA-256 de l’IP (rate limit), jamais l’IP en clair. */
+    ipHash: text("ip_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table2) => [
+    index("magic_link_email_created_idx").on(table2.email, table2.createdAt),
+    index("magic_link_ip_created_idx").on(table2.ipHash, table2.createdAt)
+  ]
+);
 var stationsCache = pgTable("stations_cache", {
   id: text("id").primaryKey(),
   latitude: doublePrecision("latitude").notNull(),
@@ -21873,19 +22079,40 @@ var officialPrices = pgTable(
   },
   (table2) => [primaryKey({ columns: [table2.stationId, table2.fuelType] })]
 );
-var reports = pgTable("reports", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id),
-  stationId: text("station_id").notNull().references(() => stationsCache.id),
-  fuelType: text("fuel_type").notNull(),
-  /** null si confirmation « Prix OK » sans nouveau prix */
-  price: doublePrecision("price"),
-  agreed: boolean("agreed").notNull(),
-  latitude: doublePrecision("latitude"),
-  longitude: doublePrecision("longitude"),
-  weight: real("weight").notNull().default(1),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
-});
+var reports = pgTable(
+  "reports",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    stationId: text("station_id").notNull().references(() => stationsCache.id),
+    fuelType: text("fuel_type").notNull(),
+    price: doublePrecision("price"),
+    agreed: boolean("agreed").notNull(),
+    /**
+     * Anciennes colonnes GPS — plus écrites (minimisation).
+     * Conservées nullable pour ne pas casser les bases existantes.
+     */
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    weight: real("weight").notNull().default(1),
+    /** floor(epochMs / REPORT_COOLDOWN_MS) — unicité anti-race. */
+    cooldownBucket: integer("cooldown_bucket").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table2) => [
+    uniqueIndex("reports_user_station_fuel_bucket_uidx").on(
+      table2.userId,
+      table2.stationId,
+      table2.fuelType,
+      table2.cooldownBucket
+    ),
+    index("reports_user_station_created_idx").on(
+      table2.userId,
+      table2.stationId,
+      table2.createdAt
+    )
+  ]
+);
 var observedPrices = pgTable(
   "observed_prices",
   {
@@ -21912,56 +22139,193 @@ function getDb() {
   return cached;
 }
 
+// server/lib/rateLimit.ts
+import { createHash } from "node:crypto";
+var MAGIC_LINK_PER_EMAIL = 3;
+var MAGIC_LINK_EMAIL_WINDOW_MS = 15 * 60 * 1e3;
+var MAGIC_LINK_PER_IP = 10;
+var MAGIC_LINK_IP_WINDOW_MS = 60 * 60 * 1e3;
+function hashIp(ip) {
+  const pepper = process.env.MAGIC_LINK_SECRET ?? "ip";
+  return createHash("sha256").update(`${pepper}:ip:${ip}`).digest("hex");
+}
+function clientIp(headers) {
+  const forwarded = headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+  return headers.get("x-real-ip")?.trim().slice(0, 64) || "unknown";
+}
+function hashClientIp(ip) {
+  return hashIp(ip);
+}
+async function assertMagicLinkAllowed(options) {
+  const db = getDb();
+  const emailSince = new Date(Date.now() - MAGIC_LINK_EMAIL_WINDOW_MS);
+  const ipSince = new Date(Date.now() - MAGIC_LINK_IP_WINDOW_MS);
+  const [emailCount] = await db.select({ count: sql`count(*)::int` }).from(magicLinkTokens).where(
+    and(
+      eq(magicLinkTokens.email, options.email),
+      gte(magicLinkTokens.createdAt, emailSince)
+    )
+  );
+  if ((emailCount?.count ?? 0) >= MAGIC_LINK_PER_EMAIL) {
+    throw new Error("RATE_LIMITED");
+  }
+  const [ipCount] = await db.select({ count: sql`count(*)::int` }).from(magicLinkTokens).where(
+    and(
+      eq(magicLinkTokens.ipHash, options.ipHash),
+      gte(magicLinkTokens.createdAt, ipSince)
+    )
+  );
+  if ((ipCount?.count ?? 0) >= MAGIC_LINK_PER_IP) {
+    throw new Error("RATE_LIMITED");
+  }
+}
+
+// server/lib/turnstile.ts
+function isProductionRuntime() {
+  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+}
+async function verifyTurnstile(token, remoteIp) {
+  const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
+  if (!secret) {
+    if (isProductionRuntime()) {
+      throw new Error("CAPTCHA_REQUIRED");
+    }
+    return;
+  }
+  if (!token || typeof token !== "string" || token.length > 2048) {
+    throw new Error("CAPTCHA_FAILED");
+  }
+  const body = new URLSearchParams({
+    secret,
+    response: token
+  });
+  if (remoteIp && remoteIp !== "unknown") {
+    body.set("remoteip", remoteIp);
+  }
+  const response = await fetch(
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    }
+  );
+  if (!response.ok) {
+    throw new Error("CAPTCHA_FAILED");
+  }
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error("CAPTCHA_FAILED");
+  }
+}
+
 // server/lib/auth.ts
 var SESSION_COOKIE = "carbutarn_session";
-var SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+var SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 var MAGIC_LINK_TTL_MS = 1e3 * 60 * 15;
+var MIN_SECRET_LENGTH = 32;
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not set`);
   return value;
 }
+function requireStrongSecret(name) {
+  const value = requireEnv(name).trim();
+  if (isProductionRuntime()) {
+    if (value.length < MIN_SECRET_LENGTH || value.startsWith("change-me")) {
+      throw new Error(`${name}_WEAK`);
+    }
+  } else if (value.length < 8) {
+    throw new Error(`${name}_WEAK`);
+  }
+  return value;
+}
 function sessionSecretKey() {
-  return new TextEncoder().encode(requireEnv("SESSION_SECRET"));
+  return new TextEncoder().encode(requireStrongSecret("SESSION_SECRET"));
+}
+function magicLinkPepper() {
+  return requireStrongSecret("MAGIC_LINK_SECRET");
 }
 async function createSessionToken(payload) {
-  return new SignJWT({ email: payload.email }).setProtectedHeader({ alg: "HS256" }).setSubject(payload.userId).setIssuedAt().setExpirationTime(`${SESSION_TTL_SECONDS}s`).sign(sessionSecretKey());
+  const appUrl = requireEnv("APP_URL").replace(/\/$/, "");
+  return new SignJWT({
+    email: payload.email,
+    sv: payload.sessionVersion
+  }).setProtectedHeader({ alg: "HS256" }).setSubject(payload.userId).setIssuer(appUrl).setAudience(appUrl).setIssuedAt().setExpirationTime(`${SESSION_TTL_SECONDS}s`).sign(sessionSecretKey());
 }
 async function verifySessionToken(token) {
   try {
-    const { payload } = await jwtVerify(token, sessionSecretKey());
+    if (!token || token.length > 4096) return null;
+    const appUrl = requireEnv("APP_URL").replace(/\/$/, "");
+    const { payload } = await jwtVerify(token, sessionSecretKey(), {
+      issuer: appUrl,
+      audience: appUrl
+    });
     const userId = payload.sub;
     const email = payload.email;
-    if (typeof userId !== "string" || typeof email !== "string") return null;
-    return { userId, email };
+    const sessionVersion = Number(payload.sv);
+    if (typeof userId !== "string" || typeof email !== "string" || !Number.isFinite(sessionVersion)) {
+      return null;
+    }
+    const db = getDb();
+    const [user] = await db.select({ sessionVersion: users.sessionVersion }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) return null;
+    if (Number(user.sessionVersion) !== sessionVersion) return null;
+    return { userId, email, sessionVersion };
   } catch {
     return null;
   }
 }
 function hashToken(raw2) {
-  const pepper = process.env.MAGIC_LINK_SECRET ?? "";
-  return createHash("sha256").update(`${pepper}:${raw2}`).digest("hex");
+  return createHash2("sha256").update(`${magicLinkPepper()}:${raw2}`).digest("hex");
 }
-async function requestMagicLink(email) {
+function normalizeEmail(email) {
   const normalized = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+  if (normalized.length < 3 || normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     throw new Error("INVALID_EMAIL");
   }
+  return normalized;
+}
+async function requestMagicLink(email, ipHash) {
+  const normalized = normalizeEmail(email);
+  await assertMagicLinkAllowed({ email: normalized, ipHash });
   const db = getDb();
+  const now = /* @__PURE__ */ new Date();
+  await db.update(magicLinkTokens).set({ consumedAt: now }).where(
+    and(
+      eq(magicLinkTokens.email, normalized),
+      isNull(magicLinkTokens.consumedAt)
+    )
+  );
   const rawToken = randomBytes(32).toString("base64url");
   const tokenHash = hashToken(rawToken);
   await db.insert(magicLinkTokens).values({
     id: randomUUID(),
     email: normalized,
     tokenHash,
+    ipHash,
     expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS)
   });
   const appUrl = requireEnv("APP_URL").replace(/\/$/, "");
-  const verifyUrl = `${appUrl}/api/auth/verify?token=${encodeURIComponent(rawToken)}`;
+  const verifyUrl = `${appUrl}/#connexion-token=${encodeURIComponent(rawToken)}`;
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.EMAIL_FROM?.trim() || "CarbuTarn <onboarding@resend.dev>";
   if (!apiKey) {
-    console.info("[magic-link] RESEND_API_KEY missing \u2014 link:", verifyUrl);
+    if (isProductionRuntime()) {
+      console.error("[magic-link] RESEND_API_KEY missing in production");
+      throw new Error("EMAIL_SEND_FAILED");
+    }
+    console.info(
+      "[magic-link] RESEND_API_KEY missing \u2014 ouvre le fragment #connexion-token=\u2026 (token non logg\xE9). E-mail:",
+      normalized
+    );
+    if (process.env.MAGIC_LINK_DEV_LOG === "1") {
+      console.info("[magic-link:dev]", verifyUrl);
+    }
     return;
   }
   const resend = new Resend(apiKey);
@@ -21977,35 +22341,56 @@ Si tu n\u2019as pas demand\xE9 ce lien, ignore cet e-mail.`,
     html: `<p>Voici ton lien de connexion CarbuTarn (valable 15 minutes) :</p><p><a href="${verifyUrl}">Se connecter</a></p><p>Si tu n\u2019as pas demand\xE9 ce lien, ignore cet e-mail.</p>`
   });
   if (error) {
-    console.error("[magic-link] Resend error:", error);
+    console.error("[magic-link] Resend error:", error.message ?? "send failed");
     throw new Error("EMAIL_SEND_FAILED");
   }
 }
 async function consumeMagicLink(rawToken) {
+  if (!rawToken || rawToken.length > 128) {
+    throw new Error("INVALID_OR_EXPIRED_TOKEN");
+  }
   const db = getDb();
   const tokenHash = hashToken(rawToken);
   const now = /* @__PURE__ */ new Date();
-  const [row] = await db.select().from(magicLinkTokens).where(
+  const consumed = await db.update(magicLinkTokens).set({ consumedAt: now }).where(
     and(
       eq(magicLinkTokens.tokenHash, tokenHash),
       isNull(magicLinkTokens.consumedAt),
       gt(magicLinkTokens.expiresAt, now)
     )
-  ).limit(1);
+  ).returning();
+  const row = consumed[0];
   if (!row) {
     throw new Error("INVALID_OR_EXPIRED_TOKEN");
   }
-  await db.update(magicLinkTokens).set({ consumedAt: now }).where(eq(magicLinkTokens.id, row.id));
   const email = row.email;
   const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
   let userId;
+  let sessionVersion;
   if (existing[0]) {
     userId = existing[0].id;
+    sessionVersion = existing[0].sessionVersion;
   } else {
     userId = randomUUID();
-    await db.insert(users).values({ id: userId, email });
+    sessionVersion = 0;
+    await db.insert(users).values({ id: userId, email, sessionVersion });
   }
-  return { userId, email };
+  return { userId, email, sessionVersion };
+}
+async function bumpSessionVersion(userId) {
+  const db = getDb();
+  const [user] = await db.select({ sessionVersion: users.sessionVersion }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return;
+  await db.update(users).set({ sessionVersion: user.sessionVersion + 1 }).where(eq(users.id, userId));
+}
+async function deleteUserAccount(userId) {
+  const db = getDb();
+  await db.delete(reports).where(eq(reports.userId, userId));
+  const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  if (user) {
+    await db.delete(magicLinkTokens).where(eq(magicLinkTokens.email, user.email));
+  }
+  await db.delete(users).where(eq(users.id, userId));
 }
 function sessionCookieOptions(maxAge = SESSION_TTL_SECONDS) {
   const secure = (process.env.APP_URL ?? "").startsWith("https");
@@ -22018,26 +22403,88 @@ function sessionCookieOptions(maxAge = SESSION_TTL_SECONDS) {
   };
 }
 
+// server/lib/requireAuth.ts
+async function attachSession(c, next) {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (!token) {
+    await next();
+    return;
+  }
+  try {
+    const session = await verifySessionToken(token);
+    if (session) {
+      c.set("userId", session.userId);
+      c.set("userEmail", session.email);
+    } else {
+      deleteCookie(c, SESSION_COOKIE, sessionCookieOptions(0));
+      c.set("sessionInvalid", true);
+    }
+  } catch (error) {
+    const message2 = error instanceof Error ? error.message : "unknown";
+    console.error("[auth] attachSession", message2);
+    deleteCookie(c, SESSION_COOKIE, sessionCookieOptions(0));
+    c.set("sessionInvalid", true);
+  }
+  await next();
+}
+function rejectInvalidSession(c) {
+  if (!c.get("sessionInvalid")) return null;
+  return c.json({ error: "Session expir\xE9e ou invalide" }, 401);
+}
+function getAuthedUser(c) {
+  if (c.get("sessionInvalid")) return null;
+  const userId = c.get("userId");
+  const email = c.get("userEmail");
+  if (!userId || !email) return null;
+  return { userId, email };
+}
+function authError(c) {
+  if (c.get("sessionInvalid")) {
+    return c.json({ error: "Session expir\xE9e ou invalide" }, 401);
+  }
+  return c.json({ error: "Authentification requise" }, 401);
+}
+
 // server/routes/auth.ts
 var authRoutes = new Hono2();
+authRoutes.get("/turnstile", (c) => {
+  const siteKey = process.env.TURNSTILE_SITE_KEY?.trim() || null;
+  return c.json({ siteKey });
+});
 authRoutes.post("/magic-link", async (c) => {
   const body = await c.req.json().catch(() => null);
   const email = typeof body?.email === "string" ? body.email : "";
+  const turnstileToken = typeof body?.turnstileToken === "string" ? body.turnstileToken : void 0;
+  const ip = clientIp(c.req.raw.headers);
   try {
-    await requestMagicLink(email);
+    await verifyTurnstile(turnstileToken, ip);
+    await requestMagicLink(email, hashClientIp(ip));
   } catch (error) {
     const message2 = error instanceof Error ? error.message : "UNKNOWN";
     if (message2 === "INVALID_EMAIL") {
       return c.json({ error: "Adresse e-mail invalide" }, 400);
     }
+    if (message2 === "RATE_LIMITED") {
+      return c.json(
+        { error: "Trop de demandes. R\xE9essaie dans quelques minutes." },
+        429
+      );
+    }
+    if (message2 === "CAPTCHA_REQUIRED" || message2 === "CAPTCHA_FAILED") {
+      return c.json({ error: "V\xE9rification anti-robot requise" }, 400);
+    }
     if (message2 === "EMAIL_SEND_FAILED") {
       return c.json({ error: "Impossible d\u2019envoyer l\u2019e-mail" }, 502);
+    }
+    if (message2 === "MAGIC_LINK_SECRET_WEAK" || message2 === "SESSION_SECRET_WEAK") {
+      console.error("[auth] weak secret:", message2);
+      return c.json({ error: "Configuration serveur invalide" }, 500);
     }
     throw error;
   }
   return c.json({ ok: true });
 });
-authRoutes.get("/verify", async (c) => {
+authRoutes.get("/verify", (c) => {
   const token = c.req.query("token");
   const appUrl = (process.env.APP_URL ?? "http://localhost:5173").replace(
     /\/$/,
@@ -22046,25 +22493,57 @@ authRoutes.get("/verify", async (c) => {
   if (!token) {
     return c.redirect(`${appUrl}/#connexion-erreur`);
   }
+  return c.redirect(
+    `${appUrl}/#connexion-token=${encodeURIComponent(token)}`
+  );
+});
+authRoutes.post("/verify", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const token = typeof body?.token === "string" ? body.token : "";
+  if (!token) {
+    return c.json({ error: "Token manquant" }, 400);
+  }
   try {
     const session = await consumeMagicLink(token);
     const jwt = await createSessionToken(session);
     setCookie(c, SESSION_COOKIE, jwt, sessionCookieOptions());
-    return c.redirect(`${appUrl}/#connexion-ok`);
+    return c.json({ ok: true, user: { id: session.userId, email: session.email } });
   } catch {
-    return c.redirect(`${appUrl}/#connexion-erreur`);
+    return c.json({ error: "Lien invalide ou expir\xE9" }, 400);
   }
 });
 authRoutes.get("/me", (c) => {
+  const invalid2 = rejectInvalidSession(c);
+  if (invalid2) return invalid2;
   const userId = c.get("userId");
   const email = c.get("userEmail");
   if (!userId || !email) {
-    return c.json({ user: null }, 401);
+    return c.json({ user: null });
   }
   return c.json({ user: { id: userId, email } });
 });
-authRoutes.post("/logout", (c) => {
-  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+authRoutes.post("/logout", async (c) => {
+  const userId = c.get("userId");
+  if (userId) {
+    try {
+      await bumpSessionVersion(userId);
+    } catch {
+      console.error("[auth] logout bump failed");
+    }
+  }
+  deleteCookie(c, SESSION_COOKIE, sessionCookieOptions(0));
+  return c.json({ ok: true });
+});
+authRoutes.delete("/account", async (c) => {
+  const authed = getAuthedUser(c);
+  if (!authed) return authError(c);
+  try {
+    await deleteUserAccount(authed.userId);
+  } catch {
+    console.error("[auth] delete account failed");
+    return c.json({ error: "Suppression impossible" }, 500);
+  }
+  deleteCookie(c, SESSION_COOKIE, sessionCookieOptions(0));
   return c.json({ ok: true });
 });
 
@@ -22072,31 +22551,21 @@ authRoutes.post("/logout", (c) => {
 import { randomUUID as randomUUID2 } from "node:crypto";
 
 // server/lib/antiAbuse.ts
-function distanceKm(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => deg * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a2 = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
-}
 var PRICE_TOLERANCE = 0.1;
-var GEOFENCE_KM = 0.5;
-var GEOFENCE_BOOST = 2;
 var REPORT_COOLDOWN_MS = 2 * 60 * 60 * 1e3;
 var CONSENSUS_WINDOW_MS = 48 * 60 * 60 * 1e3;
 function isPriceInTolerance(reported, official, tolerance = PRICE_TOLERANCE) {
   if (official <= 0 || reported <= 0) return false;
+  if (!Number.isFinite(reported) || !Number.isFinite(official)) return false;
   const low = official * (1 - tolerance);
   const high = official * (1 + tolerance);
   return reported >= low && reported <= high;
 }
-function reportWeight(options) {
-  const { stationLat, stationLon, userLat, userLon } = options;
-  if (typeof userLat !== "number" || typeof userLon !== "number" || Number.isNaN(userLat) || Number.isNaN(userLon)) {
-    return 1;
-  }
-  const km = distanceKm(stationLat, stationLon, userLat, userLon);
-  return km <= GEOFENCE_KM ? GEOFENCE_BOOST : 1;
+function reportWeight() {
+  return 1;
+}
+function cooldownBucket(nowMs = Date.now()) {
+  return Math.floor(nowMs / REPORT_COOLDOWN_MS);
 }
 
 // server/lib/consensus.ts
@@ -22156,6 +22625,80 @@ function computeConsensus(samples, options) {
   };
 }
 
+// server/lib/dates.ts
+function toIsoOrNull(value) {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const time2 = value.getTime();
+    if (Number.isNaN(time2)) return null;
+    return value.toISOString();
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toISOString();
+  }
+  return null;
+}
+
+// server/lib/openDataStations.ts
+var OPEN_DATA_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
+function addFuel(fuels, type, price, updatedAt) {
+  if (price == null) return;
+  fuels.push({ type, price, updatedAt });
+}
+function displayName(address, city) {
+  if (city) return `${address} \u2014 ${city}`;
+  return address;
+}
+function normalize(station) {
+  if (!station.geom) return null;
+  const fuels = [];
+  addFuel(fuels, "Gazole", station.gazole_prix, station.gazole_maj);
+  addFuel(fuels, "SP95", station.sp95_prix, station.sp95_maj);
+  addFuel(fuels, "E10", station.e10_prix, station.e10_maj);
+  addFuel(fuels, "SP98", station.sp98_prix, station.sp98_maj);
+  addFuel(fuels, "E85", station.e85_prix, station.e85_maj);
+  addFuel(fuels, "GPLc", station.gplc_prix, station.gplc_maj);
+  const address = station.adresse?.trim() || "Adresse inconnue";
+  const city = station.ville?.trim() ?? "";
+  return {
+    id: String(station.id),
+    latitude: station.geom.lat,
+    longitude: station.geom.lon,
+    brand: null,
+    name: displayName(address, city),
+    address,
+    city,
+    postalCode: station.cp ?? "",
+    fuels,
+    services: station.services_service ?? [],
+    openingHours: station.horaires ?? null,
+    is24h: station.horaires_automate_24_24 === "Oui" || station.horaires_automate_24_24 === "1"
+  };
+}
+var cache2 = null;
+var CACHE_TTL_MS = 5 * 60 * 1e3;
+async function fetchOpenDataStations() {
+  if (cache2 && Date.now() - cache2.at < CACHE_TTL_MS) {
+    return cache2.stations;
+  }
+  const params = new URLSearchParams({
+    where: 'code_departement="81"',
+    limit: "100"
+  });
+  const response = await fetch(`${OPEN_DATA_URL}?${params}`, {
+    signal: AbortSignal.timeout(2e4)
+  });
+  if (!response.ok) {
+    throw new Error(`Open Data ${response.status}`);
+  }
+  const data = await response.json();
+  const stations = data.results.map(normalize).filter((s) => s !== null);
+  cache2 = { at: Date.now(), stations };
+  return stations;
+}
+
 // server/types.ts
 var FUEL_TYPES = [
   "Gazole",
@@ -22168,8 +22711,21 @@ var FUEL_TYPES = [
 
 // server/routes/stations.ts
 var stationsRoutes = new Hono2();
+stationsRoutes.get("/", async (c) => {
+  try {
+    const stations = await fetchOpenDataStations();
+    c.header("Cache-Control", "public, max-age=300");
+    return c.json({ stations });
+  } catch {
+    console.error("[stations] open data proxy failed");
+    return c.json({ error: "Stations indisponibles" }, 502);
+  }
+});
 stationsRoutes.get("/:id/prices", async (c) => {
   const stationId = c.req.param("id");
+  if (!stationId || stationId.length > 64) {
+    return c.json({ error: "Station invalide" }, 400);
+  }
   const db = getDb();
   const userId = c.get("userId");
   const official = await db.select().from(officialPrices).where(eq(officialPrices.stationId, stationId));
@@ -22187,25 +22743,32 @@ stationsRoutes.get("/:id/prices", async (c) => {
     );
     reportedFuelTypes = [...new Set(recent.map((row) => row.fuelType))];
     const [last] = await db.select().from(reports).where(and(eq(reports.userId, userId), eq(reports.stationId, stationId))).orderBy(desc(reports.createdAt)).limit(1);
-    if (last) {
-      lastReportAt = last.createdAt.toISOString();
-    }
+    const iso = last ? toIsoOrNull(last.createdAt) : null;
+    if (iso) lastReportAt = iso;
   }
   return c.json({
     stationId,
     official: official.map((row) => ({
       type: row.fuelType,
       price: row.price,
-      updatedAt: row.updatedAt?.toISOString() ?? null
+      updatedAt: toIsoOrNull(row.updatedAt)
     })),
-    observed: observed.map((row) => ({
-      type: row.fuelType,
-      price: row.price,
-      sampleCount: row.sampleCount,
-      computedAt: row.computedAt.toISOString(),
-      /** Affichage public dès poids effectif ≥ MIN_CONSENSUS_WEIGHT */
-      published: row.sampleCount >= MIN_CONSENSUS_WEIGHT
-    })),
+    observed: observed.map((row) => {
+      const published = row.sampleCount >= MIN_CONSENSUS_WEIGHT;
+      if (!published) {
+        return {
+          type: row.fuelType,
+          published: false
+        };
+      }
+      return {
+        type: row.fuelType,
+        price: row.price,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? (/* @__PURE__ */ new Date()).toISOString(),
+        published: true
+      };
+    }),
     viewer: {
       authenticated: Boolean(userId),
       canReport: Boolean(userId),
@@ -22215,24 +22778,24 @@ stationsRoutes.get("/:id/prices", async (c) => {
   });
 });
 stationsRoutes.post("/:id/reports", async (c) => {
-  const userId = c.get("userId");
-  if (!userId) {
-    return c.json({ error: "Authentification requise" }, 401);
-  }
+  const authed = getAuthedUser(c);
+  if (!authed) return authError(c);
+  const { userId } = authed;
   const stationId = c.req.param("id");
+  if (!stationId || stationId.length > 64) {
+    return c.json({ error: "Station invalide" }, 400);
+  }
   const body = await c.req.json().catch(() => null);
   const fuelType = body?.fuelType;
   const agreed = body?.agreed;
   const price = typeof body?.price === "number" ? body.price : typeof body?.price === "string" ? Number(body.price) : void 0;
-  const lat = typeof body?.lat === "number" ? body.lat : typeof body?.lat === "string" ? Number(body.lat) : null;
-  const lon = typeof body?.lon === "number" ? body.lon : typeof body?.lon === "string" ? Number(body.lon) : null;
   if (!fuelType || !FUEL_TYPES.includes(fuelType)) {
     return c.json({ error: "Carburant invalide" }, 400);
   }
   if (typeof agreed !== "boolean") {
     return c.json({ error: "Champ agreed requis" }, 400);
   }
-  if (!agreed && (price == null || Number.isNaN(price) || price <= 0)) {
+  if (!agreed && (price == null || Number.isNaN(price) || !Number.isFinite(price) || price <= 0 || price > 10)) {
     return c.json({ error: "Prix corrig\xE9 requis" }, 400);
   }
   const db = getDb();
@@ -22241,21 +22804,6 @@ stationsRoutes.post("/:id/reports", async (c) => {
     return c.json(
       { error: "Station inconnue \u2014 lance d\u2019abord la sync Open Data" },
       404
-    );
-  }
-  const since = new Date(Date.now() - REPORT_COOLDOWN_MS);
-  const recent = await db.select().from(reports).where(
-    and(
-      eq(reports.userId, userId),
-      eq(reports.stationId, stationId),
-      eq(reports.fuelType, fuelType),
-      gte(reports.createdAt, since)
-    )
-  ).limit(1);
-  if (recent.length > 0) {
-    return c.json(
-      { error: "Tu as d\xE9j\xE0 signal\xE9 ce carburant pour cette station (d\xE9lai 2 h)" },
-      429
     );
   }
   const [official] = await db.select().from(officialPrices).where(
@@ -22275,24 +22823,34 @@ stationsRoutes.post("/:id/reports", async (c) => {
       422
     );
   }
-  const weight = reportWeight({
-    stationLat: station.latitude,
-    stationLon: station.longitude,
-    userLat: lat,
-    userLon: lon
-  });
+  const weight = reportWeight();
   const storedPrice = agreed ? official.price : price;
-  await db.insert(reports).values({
-    id: randomUUID2(),
-    userId,
-    stationId,
-    fuelType,
-    price: storedPrice,
-    agreed,
-    latitude: lat,
-    longitude: lon,
-    weight
-  });
+  const bucket = cooldownBucket();
+  try {
+    await db.insert(reports).values({
+      id: randomUUID2(),
+      userId,
+      stationId,
+      fuelType,
+      price: storedPrice,
+      agreed,
+      latitude: null,
+      longitude: null,
+      weight,
+      cooldownBucket: bucket
+    });
+  } catch (error) {
+    const message2 = error instanceof Error ? error.message : String(error);
+    if (message2.includes("unique") || message2.includes("duplicate") || message2.includes("23505")) {
+      return c.json(
+        {
+          error: "Tu as d\xE9j\xE0 signal\xE9 ce carburant pour cette station (d\xE9lai 2 h)"
+        },
+        429
+      );
+    }
+    throw error;
+  }
   await recomputeObserved(stationId, fuelType);
   return c.json({ ok: true });
 });
@@ -22329,7 +22887,7 @@ async function recomputeObserved(stationId, fuelType) {
 }
 
 // server/lib/syncOfficial.ts
-var OPEN_DATA_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
+var OPEN_DATA_URL2 = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records";
 function fuelsFromApi(station) {
   const rows = [];
   const add = (type, price, maj) => {
@@ -22353,7 +22911,7 @@ async function syncOfficialPrices() {
     where: 'code_departement="81"',
     limit: "100"
   });
-  const response = await fetch(`${OPEN_DATA_URL}?${params}`);
+  const response = await fetch(`${OPEN_DATA_URL2}?${params}`);
   if (!response.ok) {
     throw new Error(`Open Data ${response.status} ${response.statusText}`);
   }
@@ -22406,53 +22964,130 @@ async function syncOfficialPrices() {
   return { stations: stationCount, prices: priceCount };
 }
 
+// server/lib/secureCompare.ts
+import { timingSafeEqual } from "node:crypto";
+function timingSafeEqualString(a2, b2) {
+  const bufA = Buffer.from(a2);
+  const bufB = Buffer.from(b2);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+function bearerMatches(authHeader, secret) {
+  if (!authHeader || !secret) return false;
+  const prefix = "Bearer ";
+  if (!authHeader.startsWith(prefix)) return false;
+  const token = authHeader.slice(prefix.length);
+  return timingSafeEqualString(token, secret);
+}
+
 // server/routes/cron.ts
 var cronRoutes = new Hono2();
 cronRoutes.get("/sync-official", async (c) => {
-  const secret = process.env.CRON_SECRET;
-  const auth = c.req.header("authorization");
-  const vercelCron = c.req.header("x-vercel-cron");
-  const authorized = secret && auth === `Bearer ${secret}` || // Vercel Cron envoie ce header en production
-  Boolean(vercelCron);
-  if (!authorized) {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret || secret.length < 16 || secret.startsWith("change-me")) {
+    console.error("[cron] CRON_SECRET manquant ou trop faible");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  if (!bearerMatches(c.req.header("authorization"), secret)) {
     return c.json({ error: "Unauthorized" }, 401);
   }
   const result = await syncOfficialPrices();
   return c.json({ ok: true, ...result });
 });
 
+// server/routes/cities.ts
+var citiesRoutes = new Hono2();
+citiesRoutes.get("/", async (c) => {
+  const query = (c.req.query("q") ?? "").trim();
+  if (query.length < 2 || query.length > 80) {
+    return c.json({ cities: [] });
+  }
+  const params = new URLSearchParams({
+    nom: query,
+    codeDepartement: "81",
+    fields: "nom,codesPostaux,centre",
+    boost: "population",
+    limit: "8"
+  });
+  try {
+    const response = await fetch(
+      `https://geo.api.gouv.fr/communes?${params}`,
+      { signal: AbortSignal.timeout(8e3) }
+    );
+    if (!response.ok) {
+      return c.json({ error: "Communes indisponibles" }, 502);
+    }
+    const data = await response.json();
+    const cities = data.filter((city) => city.centre).map((city) => ({
+      name: city.nom,
+      postalCodes: city.codesPostaux,
+      longitude: city.centre.coordinates[0],
+      latitude: city.centre.coordinates[1]
+    }));
+    c.header("Cache-Control", "public, max-age=3600");
+    return c.json({ cities });
+  } catch {
+    return c.json({ error: "Communes indisponibles" }, 502);
+  }
+});
+
+// server/lib/mapTiles.ts
+var OSM_FALLBACK = {
+  tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  attribution: "\xA9 OpenStreetMap contributors",
+  provider: "osm"
+};
+var MAPTILER_ATTR = "\xA9 MapTiler \xA9 OpenStreetMap contributors";
+function getMapTilesConfig() {
+  const key = process.env.MAPTILER_API_KEY?.trim();
+  if (!key) return OSM_FALLBACK;
+  return {
+    tileUrl: `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}`,
+    attribution: MAPTILER_ATTR,
+    provider: "maptiler"
+  };
+}
+
+// server/routes/map.ts
+var mapRoutes = new Hono2();
+mapRoutes.get("/tiles", (c) => {
+  const config = getMapTilesConfig();
+  c.header("Cache-Control", "public, max-age=300");
+  return c.json(config);
+});
+
 // server/app.ts
 var app = new Hono2().basePath("/api");
+app.use(
+  "*",
+  bodyLimit({
+    maxSize: 16 * 1024,
+    onError: (c) => c.json({ error: "Payload trop volumineux" }, 413)
+  })
+);
 app.use("*", async (c, next) => {
   const origin = process.env.APP_URL ?? "http://localhost:5173";
   return cors({
     origin,
     credentials: true,
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"]
   })(c, next);
 });
-app.use("*", async (c, next) => {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (token) {
-    const session = await verifySessionToken(token);
-    if (session) {
-      c.set("userId", session.userId);
-      c.set("userEmail", session.email);
-    }
-  }
-  await next();
-});
+app.use("*", attachSession);
 app.get(
   "/health",
   (c) => c.json({ ok: true, service: "carbutarn-api", ts: (/* @__PURE__ */ new Date()).toISOString() })
 );
 app.route("/auth", authRoutes);
 app.route("/stations", stationsRoutes);
+app.route("/cities", citiesRoutes);
+app.route("/map", mapRoutes);
 app.route("/cron", cronRoutes);
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((err, c) => {
-  console.error("[api]", err);
+  const message2 = err instanceof Error ? err.message : "unknown";
+  console.error("[api]", message2);
   return c.json({ error: "Internal server error" }, 500);
 });
 var app_default = app;

@@ -2,6 +2,8 @@ export type AppEnv = {
   Variables: {
     userId?: string
     userEmail?: string
+    /** Cookie présent mais JWT/session_version invalide — les handlers doivent répondre 401. */
+    sessionInvalid?: boolean
   }
 }
 

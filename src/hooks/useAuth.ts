@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import {
+  deleteAccount as apiDeleteAccount,
   fetchMe,
   logout as apiLogout,
   requestMagicLink as apiRequestMagicLink,
+  verifyMagicLink,
 } from "../services/participatoryApi"
 
 export type AuthUser = {
@@ -13,14 +15,11 @@ export type AuthUser = {
 export type AuthFlash = "ok" | "error" | null
 
 function clearAuthHash() {
-  const hash = window.location.hash.replace(/^#/, "")
-  if (hash === "connexion-ok" || hash === "connexion-erreur") {
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${window.location.search}`,
-    )
-  }
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}`,
+  )
 }
 
 export function useAuth() {
@@ -51,17 +50,45 @@ export function useAuth() {
   }, [])
 
   useEffect(() => {
-    function handleHash() {
+    let cancelled = false
+
+    async function handleHash() {
       const hash = window.location.hash.replace(/^#/, "")
+
+      const tokenMatch = hash.match(/^connexion-token=(.+)$/)
+      if (tokenMatch?.[1]) {
+        const raw = decodeURIComponent(tokenMatch[1])
+        clearAuthHash()
+        try {
+          const result = await verifyMagicLink(raw)
+          if (cancelled) return
+          setUser(result.user)
+          setFlash("ok")
+          setAuthOpen(false)
+        } catch {
+          if (cancelled) return
+          setFlash("error")
+          setAuthOpen(true)
+        }
+        return
+      }
+
       if (hash === "connexion-ok") {
         setFlash("ok")
         clearAuthHash()
         void fetchMe()
-          .then(({ user: next }) => setUser(next))
-          .catch(() => setUser(null))
-          .finally(() => setAuthOpen(false))
+          .then(({ user: next }) => {
+            if (!cancelled) setUser(next)
+          })
+          .catch(() => {
+            if (!cancelled) setUser(null)
+          })
+          .finally(() => {
+            if (!cancelled) setAuthOpen(false)
+          })
         return
       }
+
       if (hash === "connexion-erreur") {
         setFlash("error")
         clearAuthHash()
@@ -69,9 +96,12 @@ export function useAuth() {
       }
     }
 
-    handleHash()
+    void handleHash()
     window.addEventListener("hashchange", handleHash)
-    return () => window.removeEventListener("hashchange", handleHash)
+    return () => {
+      cancelled = true
+      window.removeEventListener("hashchange", handleHash)
+    }
   }, [])
 
   useEffect(() => {
@@ -88,8 +118,8 @@ export function useAuth() {
     setAuthOpen(false)
   }
 
-  async function requestMagicLink(email: string) {
-    await apiRequestMagicLink(email)
+  async function requestMagicLink(email: string, turnstileToken?: string) {
+    await apiRequestMagicLink(email, turnstileToken)
   }
 
   async function logout() {
@@ -102,6 +132,17 @@ export function useAuth() {
     }
   }
 
+  /** Cookie déjà invalidé côté serveur (401) — aligner l’UI sans rappeler /logout. */
+  function clearSession() {
+    setUser(null)
+  }
+
+  async function deleteAccount() {
+    await apiDeleteAccount()
+    setUser(null)
+    setAuthOpen(false)
+  }
+
   return {
     user,
     loading,
@@ -111,6 +152,8 @@ export function useAuth() {
     closeAuth,
     requestMagicLink,
     logout,
+    clearSession,
+    deleteAccount,
     clearFlash: () => setFlash(null),
   }
 }

@@ -70,6 +70,8 @@ function App() {
     closeAuth,
     requestMagicLink,
     logout,
+    clearSession,
+    deleteAccount,
     clearFlash,
   } = useAuth()
   const {
@@ -369,6 +371,21 @@ function App() {
     onOpenAuth: openAuth,
     onLogout: () => {
       void logout()
+    },
+    onAuthExpired: clearSession,
+    onDeleteAccount: () => {
+      const ok = window.confirm(
+        "Supprimer définitivement ton compte CarbuTarn et tes signalements ?",
+      )
+      if (!ok) return
+      void deleteAccount().catch((error) => {
+        console.error("Suppression impossible :", error)
+        window.alert(
+          error instanceof Error
+            ? error.message
+            : "Impossible de supprimer le compte.",
+        )
+      })
     },
   }
 

@@ -19,6 +19,8 @@ type StationDetailsProps = {
   onClose: () => void
   isAuthenticated?: boolean
   onOpenAuth?: () => void
+  /** Session cookie rejetée par l’API (401) */
+  onAuthExpired?: () => void
 }
 
 function formatDate(date: string | null) {
@@ -54,6 +56,7 @@ function StationDetails({
   onClose,
   isAuthenticated = false,
   onOpenAuth,
+  onAuthExpired,
 }: StationDetailsProps) {
   const addressLine = formatStationAddress(station)
   const hoursLabel = formatOpeningHours(station.openingHours)
@@ -67,17 +70,24 @@ function StationDetails({
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
+  function handlePricesError(error: unknown) {
+    setPricesError(
+      error instanceof Error ? error.message : "Chargement impossible",
+    )
+  }
+
   async function loadPrices() {
     setPricesLoading(true)
     setPricesError(null)
     try {
       const data = await fetchStationPrices(station.id)
       setPrices(data)
+      if (isAuthenticated && !data.viewer.authenticated) {
+        onAuthExpired?.()
+      }
     } catch (error) {
       console.error("Prix participatifs indisponibles :", error)
-      setPricesError(
-        error instanceof Error ? error.message : "Chargement impossible",
-      )
+      handlePricesError(error)
     } finally {
       setPricesLoading(false)
     }
@@ -91,14 +101,14 @@ function StationDetails({
       setPricesError(null)
       try {
         const data = await fetchStationPrices(station.id)
-        if (!cancelled) setPrices(data)
+        if (cancelled) return
+        setPrices(data)
+        if (isAuthenticated && !data.viewer.authenticated) {
+          onAuthExpired?.()
+        }
       } catch (error) {
         console.error("Prix participatifs indisponibles :", error)
-        if (!cancelled) {
-          setPricesError(
-            error instanceof Error ? error.message : "Chargement impossible",
-          )
-        }
+        if (!cancelled) handlePricesError(error)
       } finally {
         if (!cancelled) setPricesLoading(false)
       }
@@ -108,6 +118,7 @@ function StationDetails({
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on station / auth only
   }, [station.id, isAuthenticated])
 
   useEffect(() => {
@@ -130,8 +141,7 @@ function StationDetails({
     observed: StationPricesResponse["observed"][number] | null,
   ) {
     if (!observed) return false
-    if (typeof observed.published === "boolean") return observed.published
-    return observed.sampleCount >= 3
+    return observed.published === true && typeof observed.price === "number"
   }
 
   function alreadyReported(type: FuelType) {
@@ -152,8 +162,6 @@ function StationDetails({
         fuelType,
         agreed,
         price,
-        lat: userLocation?.latitude,
-        lon: userLocation?.longitude,
       })
       setCorrectingFuel(null)
       setDraftPrice("")
@@ -164,9 +172,18 @@ function StationDetails({
       )
       await loadPrices()
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : "Envoi impossible",
-      )
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? Number((error as { status?: number }).status)
+          : undefined
+      if (status === 401) {
+        onAuthExpired?.()
+        setActionError("Session expirée — reconnecte-toi pour signaler.")
+      } else {
+        setActionError(
+          error instanceof Error ? error.message : "Envoi impossible",
+        )
+      }
     } finally {
       setBusyFuel(null)
     }
@@ -286,8 +303,7 @@ function StationDetails({
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted">
             Consensus 48 h : groupe de prix à ±0,010 €/L, médiane du groupe.
-            Publication dès 3 avis (un signalement à moins de 500 m de la
-            station compte double).
+            Publication dès 3 avis distincts.
           </p>
 
           {!isAuthenticated && onOpenAuth && (
@@ -348,9 +364,9 @@ function StationDetails({
                       </p>
                       <p className="mt-0.5 text-xs text-muted">
                         {isPublished(observed)
-                          ? `${observed!.sampleCount} avis`
+                          ? `${observed!.sampleCount ?? "—"} avis`
                           : observed
-                            ? `${observed.sampleCount} avis — pas encore publié`
+                            ? "Avis en cours de consensus"
                             : "Pas encore d’avis"}
                       </p>
                       {isPublished(observed) && observed!.computedAt && (
@@ -360,9 +376,11 @@ function StationDetails({
                       )}
                     </div>
                     <p className="font-display text-lg font-bold tabular-nums text-ink">
-                      {isPublished(observed) ? (
+                      {isPublished(observed) &&
+                      observed &&
+                      typeof observed.price === "number" ? (
                         <>
-                          {observed!.price.toFixed(3)}
+                          {observed.price.toFixed(3)}
                           <span className="ml-1 text-xs font-semibold text-muted">
                             €/L
                           </span>
@@ -475,9 +493,9 @@ function StationDetails({
         )}
 
         <p className="mt-6 border-t border-line/80 pt-4 text-xs leading-relaxed text-muted">
-          Prix officiels : données publiques. Enseignes et position :
-          OpenStreetMap. Prix constatés : contributions filtrées (compte, rate
-          limit, fourchette ±10 %, consensus ±0,010 €/L).
+          Prix officiels : données publiques (via API CarbuTarn). Enseignes :
+          OpenStreetMap. Prix constatés : compte, délai 2 h, fourchette ±10 %,
+          consensus ±0,010 €/L.
         </p>
       </div>
     </div>

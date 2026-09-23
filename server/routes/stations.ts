@@ -11,16 +11,39 @@ import {
 import {
   CONSENSUS_WINDOW_MS,
   REPORT_COOLDOWN_MS,
+  cooldownBucket,
   isPriceInTolerance,
   reportWeight,
 } from "../lib/antiAbuse"
 import { computeConsensus, MIN_CONSENSUS_WEIGHT } from "../lib/consensus"
+import { toIsoOrNull } from "../lib/dates"
+import { fetchOpenDataStations } from "../lib/openDataStations"
+import { authError, getAuthedUser } from "../lib/requireAuth"
 import { FUEL_TYPES, type AppEnv, type FuelTypeApi } from "../types"
 
 export const stationsRoutes = new Hono<AppEnv>()
 
+/** Liste des stations (proxy serveur → Open Data, pas d’appel direct client). */
+stationsRoutes.get("/", async (c) => {
+  try {
+    const stations = await fetchOpenDataStations()
+    c.header("Cache-Control", "public, max-age=300")
+    return c.json({ stations })
+  } catch {
+    console.error("[stations] open data proxy failed")
+    return c.json({ error: "Stations indisponibles" }, 502)
+  }
+})
+
 stationsRoutes.get("/:id/prices", async (c) => {
+  // Session invalide : cookie déjà effacé par attachSession → on continue en anonyme (pas de 500).
+  // Les routes protégées (reports) renvoient 401 via requireUser.
+
   const stationId = c.req.param("id")
+  if (!stationId || stationId.length > 64) {
+    return c.json({ error: "Station invalide" }, 400)
+  }
+
   const db = getDb()
   const userId = c.get("userId")
 
@@ -59,9 +82,8 @@ stationsRoutes.get("/:id/prices", async (c) => {
       .orderBy(desc(reports.createdAt))
       .limit(1)
 
-    if (last) {
-      lastReportAt = last.createdAt.toISOString()
-    }
+    const iso = last ? toIsoOrNull(last.createdAt) : null
+    if (iso) lastReportAt = iso
   }
 
   return c.json({
@@ -69,16 +91,24 @@ stationsRoutes.get("/:id/prices", async (c) => {
     official: official.map((row) => ({
       type: row.fuelType,
       price: row.price,
-      updatedAt: row.updatedAt?.toISOString() ?? null,
+      updatedAt: toIsoOrNull(row.updatedAt),
     })),
-    observed: observed.map((row) => ({
-      type: row.fuelType,
-      price: row.price,
-      sampleCount: row.sampleCount,
-      computedAt: row.computedAt.toISOString(),
-      /** Affichage public dès poids effectif ≥ MIN_CONSENSUS_WEIGHT */
-      published: row.sampleCount >= MIN_CONSENSUS_WEIGHT,
-    })),
+    observed: observed.map((row) => {
+      const published = row.sampleCount >= MIN_CONSENSUS_WEIGHT
+      if (!published) {
+        return {
+          type: row.fuelType,
+          published: false as const,
+        }
+      }
+      return {
+        type: row.fuelType,
+        price: row.price,
+        sampleCount: row.sampleCount,
+        computedAt: toIsoOrNull(row.computedAt) ?? new Date().toISOString(),
+        published: true as const,
+      }
+    }),
     viewer: {
       authenticated: Boolean(userId),
       canReport: Boolean(userId),
@@ -89,12 +119,15 @@ stationsRoutes.get("/:id/prices", async (c) => {
 })
 
 stationsRoutes.post("/:id/reports", async (c) => {
-  const userId = c.get("userId")
-  if (!userId) {
-    return c.json({ error: "Authentification requise" }, 401)
-  }
+  const authed = getAuthedUser(c)
+  if (!authed) return authError(c)
+  const { userId } = authed
 
   const stationId = c.req.param("id")
+  if (!stationId || stationId.length > 64) {
+    return c.json({ error: "Station invalide" }, 400)
+  }
+
   const body = await c.req.json().catch(() => null)
 
   const fuelType = body?.fuelType as FuelTypeApi | undefined
@@ -105,18 +138,6 @@ stationsRoutes.post("/:id/reports", async (c) => {
       : typeof body?.price === "string"
         ? Number(body.price)
         : undefined
-  const lat =
-    typeof body?.lat === "number"
-      ? body.lat
-      : typeof body?.lat === "string"
-        ? Number(body.lat)
-        : null
-  const lon =
-    typeof body?.lon === "number"
-      ? body.lon
-      : typeof body?.lon === "string"
-        ? Number(body.lon)
-        : null
 
   if (!fuelType || !FUEL_TYPES.includes(fuelType)) {
     return c.json({ error: "Carburant invalide" }, 400)
@@ -124,7 +145,14 @@ stationsRoutes.post("/:id/reports", async (c) => {
   if (typeof agreed !== "boolean") {
     return c.json({ error: "Champ agreed requis" }, 400)
   }
-  if (!agreed && (price == null || Number.isNaN(price) || price <= 0)) {
+  if (
+    !agreed &&
+    (price == null ||
+      Number.isNaN(price) ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      price > 10)
+  ) {
     return c.json({ error: "Prix corrigé requis" }, 400)
   }
 
@@ -140,27 +168,6 @@ stationsRoutes.post("/:id/reports", async (c) => {
     return c.json(
       { error: "Station inconnue — lance d’abord la sync Open Data" },
       404,
-    )
-  }
-
-  const since = new Date(Date.now() - REPORT_COOLDOWN_MS)
-  const recent = await db
-    .select()
-    .from(reports)
-    .where(
-      and(
-        eq(reports.userId, userId),
-        eq(reports.stationId, stationId),
-        eq(reports.fuelType, fuelType),
-        gte(reports.createdAt, since),
-      ),
-    )
-    .limit(1)
-
-  if (recent.length > 0) {
-    return c.json(
-      { error: "Tu as déjà signalé ce carburant pour cette station (délai 2 h)" },
-      429,
     )
   }
 
@@ -188,27 +195,40 @@ stationsRoutes.post("/:id/reports", async (c) => {
     )
   }
 
-  const weight = reportWeight({
-    stationLat: station.latitude,
-    stationLon: station.longitude,
-    userLat: lat,
-    userLon: lon,
-  })
-
-  // Confirmation : on stocke le prix officiel comme ancre pour le consensus
+  const weight = reportWeight()
   const storedPrice = agreed ? official.price : price!
+  const bucket = cooldownBucket()
 
-  await db.insert(reports).values({
-    id: randomUUID(),
-    userId,
-    stationId,
-    fuelType,
-    price: storedPrice,
-    agreed,
-    latitude: lat,
-    longitude: lon,
-    weight,
-  })
+  try {
+    await db.insert(reports).values({
+      id: randomUUID(),
+      userId,
+      stationId,
+      fuelType,
+      price: storedPrice,
+      agreed,
+      latitude: null,
+      longitude: null,
+      weight,
+      cooldownBucket: bucket,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (
+      message.includes("unique") ||
+      message.includes("duplicate") ||
+      message.includes("23505")
+    ) {
+      return c.json(
+        {
+          error:
+            "Tu as déjà signalé ce carburant pour cette station (délai 2 h)",
+        },
+        429,
+      )
+    }
+    throw error
+  }
 
   await recomputeObserved(stationId, fuelType)
 

@@ -9,6 +9,7 @@ type AppFooterProps = {
   authLoading?: boolean
   onOpenAuth?: () => void
   onLogout?: () => void
+  onDeleteAccount?: () => void
 }
 
 function AppFooter({
@@ -18,6 +19,7 @@ function AppFooter({
   authLoading = false,
   onOpenAuth,
   onLogout,
+  onDeleteAccount,
 }: AppFooterProps) {
   return (
     <footer
@@ -50,7 +52,7 @@ function AppFooter({
 
         <div className="flex shrink-0 items-center gap-2">
           {onOpenAuth && (
-            <div className="flex max-w-[10rem] items-center gap-1.5 sm:max-w-[14rem]">
+            <div className="flex max-w-[12rem] flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 sm:max-w-[16rem]">
               {authLoading ? (
                 <span className="text-[10px] text-muted">…</span>
               ) : user ? (
@@ -68,6 +70,15 @@ function AppFooter({
                       className="shrink-0 text-[10px] font-semibold text-muted transition hover:text-petrol"
                     >
                       Sortir
+                    </button>
+                  )}
+                  {onDeleteAccount && (
+                    <button
+                      type="button"
+                      onClick={onDeleteAccount}
+                      className="shrink-0 text-[10px] font-semibold text-muted transition hover:text-red-700 dark:hover:text-red-400"
+                    >
+                      Supprimer le compte
                     </button>
                   )}
                 </>

@@ -7,27 +7,40 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core"
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   reputationScore: real("reputation_score").notNull().default(1),
+  /** Incrémenté au logout / suppression → invalide tous les JWT émis. */
+  sessionVersion: integer("session_version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 })
 
-export const magicLinkTokens = pgTable("magic_link_tokens", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull(),
-  tokenHash: text("token_hash").notNull().unique(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-})
+export const magicLinkTokens = pgTable(
+  "magic_link_tokens",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** Hash SHA-256 de l’IP (rate limit), jamais l’IP en clair. */
+    ipHash: text("ip_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("magic_link_email_created_idx").on(table.email, table.createdAt),
+    index("magic_link_ip_created_idx").on(table.ipHash, table.createdAt),
+  ],
+)
 
 export const stationsCache = pgTable("stations_cache", {
   id: text("id").primaryKey(),
@@ -57,25 +70,46 @@ export const officialPrices = pgTable(
   (table) => [primaryKey({ columns: [table.stationId, table.fuelType] })],
 )
 
-export const reports = pgTable("reports", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id),
-  stationId: text("station_id")
-    .notNull()
-    .references(() => stationsCache.id),
-  fuelType: text("fuel_type").notNull(),
-  /** null si confirmation « Prix OK » sans nouveau prix */
-  price: doublePrecision("price"),
-  agreed: boolean("agreed").notNull(),
-  latitude: doublePrecision("latitude"),
-  longitude: doublePrecision("longitude"),
-  weight: real("weight").notNull().default(1),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-})
+export const reports = pgTable(
+  "reports",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    stationId: text("station_id")
+      .notNull()
+      .references(() => stationsCache.id),
+    fuelType: text("fuel_type").notNull(),
+    price: doublePrecision("price"),
+    agreed: boolean("agreed").notNull(),
+    /**
+     * Anciennes colonnes GPS — plus écrites (minimisation).
+     * Conservées nullable pour ne pas casser les bases existantes.
+     */
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    weight: real("weight").notNull().default(1),
+    /** floor(epochMs / REPORT_COOLDOWN_MS) — unicité anti-race. */
+    cooldownBucket: integer("cooldown_bucket").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reports_user_station_fuel_bucket_uidx").on(
+      table.userId,
+      table.stationId,
+      table.fuelType,
+      table.cooldownBucket,
+    ),
+    index("reports_user_station_created_idx").on(
+      table.userId,
+      table.stationId,
+      table.createdAt,
+    ),
+  ],
+)
 
 export const observedPrices = pgTable(
   "observed_prices",

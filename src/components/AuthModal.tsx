@@ -1,9 +1,18 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react"
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type MutableRefObject,
+} from "react"
+import { fetchTurnstileSiteKey } from "../services/participatoryApi"
+import { loadTurnstileApi } from "../utils/turnstile"
 
 type AuthModalProps = {
   open: boolean
   onClose: () => void
-  onSubmitEmail: (email: string) => Promise<void>
+  onSubmitEmail: (email: string, turnstileToken?: string) => Promise<void>
   flash?: "ok" | "error" | null
   onClearFlash?: () => void
 }
@@ -29,9 +38,82 @@ function AuthModal({
 
 type ContentProps = {
   onClose: () => void
-  onSubmitEmail: (email: string) => Promise<void>
+  onSubmitEmail: (email: string, turnstileToken?: string) => Promise<void>
   flash: "ok" | "error" | null
   onClearFlash?: () => void
+}
+
+/**
+ * Widget Turnstile avec lifecycle isolé.
+ * Le cleanup appelle toujours remove(widgetId) avant que React n’arrache le DOM
+ * (critique quand le formulaire passe en état « sent »).
+ */
+function TurnstileWidget({
+  siteKey,
+  onToken,
+  onExpire,
+  onError,
+  widgetIdRef,
+}: {
+  siteKey: string
+  onToken: (token: string) => void
+  onExpire: () => void
+  onError?: () => void
+  widgetIdRef: MutableRefObject<string | null>
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const onTokenRef = useRef(onToken)
+  const onExpireRef = useRef(onExpire)
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => {
+    onTokenRef.current = onToken
+    onExpireRef.current = onExpire
+    onErrorRef.current = onError
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    /** Id local à cette exécution d’effet (StrictMode-safe). */
+    let widgetId: string | null = null
+
+    void loadTurnstileApi()
+      .then((turnstile) => {
+        if (cancelled || !containerRef.current) return
+
+        widgetId = turnstile.render(containerRef.current, {
+          sitekey: siteKey,
+          callback: (token) => {
+            if (!cancelled) onTokenRef.current(token)
+          },
+          "expired-callback": () => {
+            if (!cancelled) onExpireRef.current()
+          },
+          "error-callback": () => {
+            if (!cancelled) onErrorRef.current?.()
+          },
+          theme:
+            document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+        })
+        widgetIdRef.current = widgetId
+      })
+      .catch(() => {
+        if (!cancelled) onErrorRef.current?.()
+      })
+
+    return () => {
+      cancelled = true
+      const id = widgetId
+      widgetId = null
+      widgetIdRef.current = null
+      // remove uniquement si ce run a bien créé un widget
+      if (id && window.turnstile) {
+        window.turnstile.remove(id)
+      }
+    }
+  }, [siteKey, widgetIdRef])
+
+  return <div ref={containerRef} className="flex min-h-[65px] justify-center" />
 }
 
 function AuthModalContent({
@@ -42,11 +124,18 @@ function AuthModalContent({
 }: ContentProps) {
   const titleId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
+  const widgetIdRef = useRef<string | null>(null)
   const [email, setEmail] = useState("")
+  const [siteKey, setSiteKey] = useState<string | null>(null)
+  const [captchaReady, setCaptchaReady] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle",
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const showForm = flash !== "ok" && status !== "sent"
+  const needsCaptcha = Boolean(siteKey)
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus())
@@ -61,25 +150,61 @@ function AuthModalContent({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [onClose])
 
+  useEffect(() => {
+    let cancelled = false
+    void fetchTurnstileSiteKey()
+      .then((key) => {
+        if (!cancelled) {
+          setSiteKey(key)
+          setCaptchaReady(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSiteKey(null)
+          setCaptchaReady(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const trimmed = email.trim()
     if (!trimmed) return
+    if (needsCaptcha && !turnstileToken) {
+      setErrorMessage("Valide la vérification anti-robot.")
+      return
+    }
 
     setStatus("sending")
     setErrorMessage(null)
     onClearFlash?.()
 
     try {
-      await onSubmitEmail(trimmed)
+      await onSubmitEmail(trimmed, turnstileToken ?? undefined)
+      setTurnstileToken(null)
       setStatus("sent")
     } catch (error) {
       setStatus("error")
       setErrorMessage(
         error instanceof Error ? error.message : "Envoi impossible",
       )
+      const id = widgetIdRef.current
+      if (id && window.turnstile) {
+        window.turnstile.reset(id)
+      }
+      setTurnstileToken(null)
     }
   }
+
+  const canSubmit =
+    status !== "sending" &&
+    email.trim().length > 0 &&
+    captchaReady &&
+    (!needsCaptcha || Boolean(turnstileToken))
 
   return (
     <div
@@ -128,7 +253,7 @@ function AuthModalContent({
             </p>
           )}
 
-          {flash === "ok" || status === "sent" ? (
+          {!showForm ? (
             <div className="space-y-3">
               {flash === "ok" ? (
                 <p
@@ -148,11 +273,11 @@ function AuthModalContent({
                   </p>
                   {import.meta.env.DEV && (
                     <p className="rounded-xl bg-paper-deep/80 px-3 py-2.5 text-xs leading-relaxed text-muted">
-                      En local sans Resend : ouvre le lien affiché dans le{" "}
-                      <strong className="font-semibold text-ink-soft">
-                        terminal API
-                      </strong>{" "}
-                      (<code className="text-[11px]">pnpm dev:api</code>).
+                      En local sans Resend : ajoute{" "}
+                      <code className="text-[11px]">MAGIC_LINK_DEV_LOG=1</code>{" "}
+                      au{" "}
+                      <code className="text-[11px]">.env.local</code> de l’API
+                      pour afficher le lien une fois dans le terminal.
                     </p>
                   )}
                 </>
@@ -180,12 +305,25 @@ function AuthModalContent({
                   name="email"
                   autoComplete="email"
                   required
+                  maxLength={254}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="toi@exemple.fr"
                   className="w-full rounded-xl border border-line/90 bg-paper/80 px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-muted focus:border-petrol focus:bg-surface focus:ring-2 focus:ring-petrol/20"
                 />
               </label>
+
+              {siteKey && (
+                <TurnstileWidget
+                  siteKey={siteKey}
+                  widgetIdRef={widgetIdRef}
+                  onToken={setTurnstileToken}
+                  onExpire={() => setTurnstileToken(null)}
+                  onError={() =>
+                    setErrorMessage("Vérification anti-robot indisponible.")
+                  }
+                />
+              )}
 
               {errorMessage && (
                 <p
@@ -198,7 +336,7 @@ function AuthModalContent({
 
               <button
                 type="submit"
-                disabled={status === "sending" || email.trim().length === 0}
+                disabled={!canSubmit}
                 className="min-h-11 w-full rounded-xl bg-petrol px-4 text-sm font-bold text-surface transition hover:bg-petrol-deep disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {status === "sending" ? "Envoi…" : "Recevoir le lien"}

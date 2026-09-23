@@ -4,7 +4,7 @@ Application web cartographique pour consulter les prix des carburants dans le Ta
 
 Prix officiels (Open Data) + enseignes OpenStreetMap, et **prix constatés** via signalements authentifiés (magic link).
 
-Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · détail Phase 2 : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md) · en-têtes : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md).
+Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · Phase 2 : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md) · en-têtes : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md) · stores : [docs/STORE_SECURITY.md](docs/STORE_SECURITY.md).
 
 ## Fonctionnalités
 

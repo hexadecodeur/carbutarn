@@ -1,38 +1,36 @@
 # Déploiement — en-têtes HTTP (Vercel)
 
-Les en-têtes de base sont déjà dans `vercel.json`. La CSP ci-dessous peut être ajoutée plus tard (à tester : MapLibre / workers).
-
-## Déjà configuré (`vercel.json`)
+Configurée dans `vercel.json`.
 
 | En-tête | Valeur |
 |---------|--------|
 | `X-Content-Type-Options` | `nosniff` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` (tuiles OSM) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `X-Frame-Options` | `DENY` |
 | `Permissions-Policy` | `geolocation=(self), camera=(), microphone=()` |
+| `Strict-Transport-Security` | `max-age=15552000; includeSubDomains` |
+| `Content-Security-Policy` | voir ci-dessous |
 
-## Content-Security-Policy (brouillon)
+## Content-Security-Policy
 
 ```text
 default-src 'self';
-script-src 'self';
+script-src 'self' https://challenges.cloudflare.com;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 font-src 'self' https://fonts.gstatic.com;
-img-src 'self' data: https://tile.openstreetmap.org;
-connect-src 'self'
-  https://data.economie.gouv.fr
-  https://geo.api.gouv.fr
-  https://overpass-api.de
-  https://overpass.kumi.systems
-  https://overpass.private.coffee;
+img-src 'self' data: https:;
+connect-src 'self' https://challenges.cloudflare.com;
 worker-src 'self' blob:;
+frame-src https://challenges.cloudflare.com;
 frame-ancestors 'none';
 base-uri 'self';
+form-action 'self';
 ```
 
 Notes :
 
-- L’API Phase 2 est **same-origin** (`/api`) → déjà couverte par `'self'`.
-- Tuiles OSM : ne pas utiliser `Referrer-Policy: no-referrer`.
-- Resend / Neon sont appelés **côté serveur** uniquement (pas dans `connect-src` navigateur).
-- Cookie de session `carbutarn_session` (HttpOnly) : cookie technique d’auth, documenté dans la politique de confidentialité — pas de bandeau cookies requis pour ce seul usage.
+- API, stations et communes sont **same-origin** (`/api`) → `'self'`.
+- Tuiles carte : `img-src https:` (MapTiler / OSM). Configurer `VITE_MAP_TILE_URL` pour les stores.
+- Turnstile : scripts / frames Cloudflare.
+- `theme-boot.js` est un fichier externe (pas de script inline) pour rester compatible CSP.
+- Cookie `carbutarn_session` : HttpOnly, Secure (si `APP_URL` https), SameSite=Lax ; invalidé au logout via `session_version`.

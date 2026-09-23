@@ -9,10 +9,10 @@ export type StationPricesResponse = {
   official: { type: string; price: number; updatedAt: string | null }[]
   observed: {
     type: string
-    price: number
-    sampleCount: number
-    computedAt: string
     published: boolean
+    price?: number
+    sampleCount?: number
+    computedAt?: string
   }[]
   viewer: {
     authenticated: boolean
@@ -22,10 +22,7 @@ export type StationPricesResponse = {
   }
 }
 
-async function api<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     credentials: "include",
     headers: {
@@ -39,17 +36,39 @@ async function api<T>(
     const body = (await response.json().catch(() => null)) as {
       error?: string
     } | null
-    throw new Error(body?.error ?? `API ${response.status}`)
+    const error = new Error(body?.error ?? `API ${response.status}`) as Error & {
+      status?: number
+    }
+    error.status = response.status
+    throw error
   }
 
   return response.json() as Promise<T>
 }
 
-export function requestMagicLink(email: string) {
+export async function fetchTurnstileSiteKey(): Promise<string | null> {
+  const response = await fetch("/api/auth/turnstile")
+  if (!response.ok) return null
+  const data = (await response.json()) as { siteKey?: string | null }
+  const key = data.siteKey?.trim()
+  return key || null
+}
+
+export function requestMagicLink(email: string, turnstileToken?: string) {
   return api<{ ok: true }>("/auth/magic-link", {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, turnstileToken }),
   })
+}
+
+export function verifyMagicLink(token: string) {
+  return api<{ ok: true; user: { id: string; email: string } }>(
+    "/auth/verify",
+    {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    },
+  )
 }
 
 export async function fetchMe(): Promise<{
@@ -59,6 +78,7 @@ export async function fetchMe(): Promise<{
     credentials: "include",
   })
 
+  // Session cookie invalide → 401 + cookie effacé côté serveur
   if (response.status === 401) {
     return { user: null }
   }
@@ -76,6 +96,10 @@ export function logout() {
   return api<{ ok: true }>("/auth/logout", { method: "POST" })
 }
 
+export function deleteAccount() {
+  return api<{ ok: true }>("/auth/account", { method: "DELETE" })
+}
+
 export function fetchStationPrices(stationId: string) {
   return api<StationPricesResponse>(
     `/stations/${encodeURIComponent(stationId)}/prices`,
@@ -88,8 +112,6 @@ export function submitReport(
     fuelType: FuelType
     agreed: boolean
     price?: number
-    lat?: number
-    lon?: number
   },
 ) {
   return api<{ ok: true }>(

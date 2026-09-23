@@ -1,7 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import * as maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import type { ListFuelType, Station } from "../types/station"
+import { fetchMapTilesConfig } from "../services/mapApi"
 import { getFuelPriceRange, getPriceHeatColor } from "../utils/priceColor"
 
 function readGeolocation(
@@ -97,6 +98,7 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     stationsRef.current = stations
     const onLocateStatusRef = useRef(onLocateStatus)
     const onUserLocationChangeRef = useRef(onUserLocationChange)
+    const [mapReady, setMapReady] = useState(false)
 
     useEffect(() => {
       onLocateStatusRef.current = onLocateStatus
@@ -109,49 +111,60 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     useEffect(() => {
       if (!mapContainer.current || map.current) return
 
-      map.current = new maplibregl.Map({
-        container: mapContainer.current,
+      let cancelled = false
+      const container = mapContainer.current
+      let resizeObserver: ResizeObserver | null = null
 
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: "raster",
-              tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-              tileSize: 256,
-              attribution: "© OpenStreetMap contributors",
+      void fetchMapTilesConfig().then((tiles) => {
+        if (cancelled || !container || map.current) return
+
+        map.current = new maplibregl.Map({
+          container,
+
+          style: {
+            version: 8,
+            sources: {
+              basemap: {
+                type: "raster",
+                tiles: [tiles.tileUrl],
+                tileSize: 256,
+                attribution: tiles.attribution,
+              },
             },
+            layers: [
+              {
+                id: "basemap",
+                type: "raster",
+                source: "basemap",
+              },
+            ],
           },
-          layers: [
-            {
-              id: "osm",
-              type: "raster",
-              source: "osm",
-            },
-          ],
-        },
 
-        center: [2.148, 43.9298],
-        zoom: 12,
+          center: [2.148, 43.9298],
+          zoom: 12,
+        })
+
+        map.current.addControl(new maplibregl.NavigationControl(), "top-right")
+
+        resizeObserver = new ResizeObserver(() => {
+          map.current?.resize()
+        })
+        resizeObserver.observe(container)
+        setMapReady(true)
       })
-
-      map.current.addControl(new maplibregl.NavigationControl(), "top-right")
-
-      const resizeObserver = new ResizeObserver(() => {
-        map.current?.resize()
-      })
-      resizeObserver.observe(mapContainer.current)
 
       return () => {
-        resizeObserver.disconnect()
+        cancelled = true
+        resizeObserver?.disconnect()
         userMarker.current?.remove()
         map.current?.remove()
         map.current = null
+        setMapReady(false)
       }
     }, [])
 
     useEffect(() => {
-      if (!map.current) return
+      if (!mapReady || !map.current) return
 
       const markers = stationMarkers.current
       markers.forEach((marker) => marker.remove())
@@ -235,7 +248,7 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
         markers.forEach((marker) => marker.remove())
         markers.clear()
       }
-    }, [stations, onStationSelect, selectedFuel, selectedStationId])
+    }, [mapReady, stations, onStationSelect, selectedFuel, selectedStationId])
 
     useImperativeHandle(ref, () => ({
       locateUser(options) {

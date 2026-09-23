@@ -80,12 +80,13 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         paragraphs: [
           "CarbuTarn vise à minimiser les données personnelles. Selon votre usage :",
           "• Compte utilisateur : adresse e-mail utilisée pour recevoir un lien magique de connexion ; identifiant technique de compte stocké en base.",
-          "• Session : un cookie HttpOnly nommé carbutarn_session (durée d’environ 30 jours) permet de vous reconnaître après connexion. Il est strictement nécessaire au fonctionnement du compte.",
-          "• Signalements de prix : station, type de carburant, confirmation ou prix proposé, horodatage, et éventuellement vos coordonnées GPS si votre appareil les fournit au moment du signalement (pondération anti-abus). Ces données sont associées à votre compte.",
-          "• Géolocalisation côté appareil : si vous l’autorisez pour centrer la carte ou calculer des distances, la position reste en mémoire de session dans le navigateur. Elle n’est transmise à nos serveurs que si vous envoyez un signalement alors que la position est disponible.",
-          "• Recherche de ville : la saisie est envoyée à l’API publique geo.api.gouv.fr pour obtenir des suggestions de communes du Tarn.",
-          "• Données de stations : les prix officiels et adresses sont récupérés depuis data.economie.gouv.fr ; les enseignes et positions peuvent être enrichies via l’API Overpass (OpenStreetMap).",
-          "• Stockage local (navigateur) : préférences et caches techniques (thème, filtres, largeur du panneau, recherches récentes, cache temporaire des enseignes OSM). Ces éléments restent sur votre appareil et ne sont pas transmis à Hexa Décodeur, hors les traitements listés ci-dessus.",
+          "• Session : un cookie HttpOnly nommé carbutarn_session (durée d’environ 7 jours) permet de vous reconnaître après connexion. Il est strictement nécessaire au fonctionnement du compte. La déconnexion invalide les sessions côté serveur.",
+          "• Signalements de prix : station, type de carburant, confirmation ou prix proposé, et horodatage. Ces données sont associées à votre compte. Aucune coordonnée GPS n’est envoyée ni stockée lors d’un signalement.",
+          "• Géolocalisation côté appareil : si vous l’autorisez pour centrer la carte ou calculer des distances, la position reste en mémoire de session dans le navigateur et n’est pas transmise à nos serveurs.",
+          "• Recherche de ville : la saisie est envoyée à l’API CarbuTarn, qui interroge geo.api.gouv.fr côté serveur (votre adresse IP n’est pas exposée directement à ce service).",
+          "• Données de stations : les prix officiels et adresses sont récupérés côté serveur depuis data.economie.gouv.fr ; les enseignes peuvent être enrichies via un snapshot OpenStreetMap embarqué (et, en développement uniquement, via Overpass).",
+          "• Stockage local (navigateur) : préférences et caches techniques (thème, filtres, largeur du panneau, recherches récentes, cache temporaire des enseignes OSM). Ces éléments restent sur votre appareil.",
+          "• Protection anti-robot : si Cloudflare Turnstile est activé, un jeton de défi est envoyé à Cloudflare lors de la demande de lien magique.",
         ],
       },
       {
@@ -113,8 +114,8 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
       {
         heading: "Destinataires et sous-traitants",
         paragraphs: [
-          "Selon les traitements : Vercel (hébergement du site et de l’API), Neon (base de données), Resend (envoi des e-mails de lien magique).",
-          "Des fournisseurs tiers peuvent recevoir des requêtes techniques nécessaires au service : data.economie.gouv.fr (prix officiels), Overpass / OpenStreetMap (enseignes et positions), geo.api.gouv.fr (communes), et les services de tuiles OpenStreetMap pour l’affichage de la carte. Ces services appliquent leurs propres politiques.",
+          "Selon les traitements : Vercel (hébergement du site et de l’API), Neon (base de données), Resend (envoi des e-mails de lien magique), et éventuellement Cloudflare (Turnstile).",
+          "Des fournisseurs tiers peuvent être interrogés côté serveur pour le fonctionnement : data.economie.gouv.fr (prix officiels), geo.api.gouv.fr (communes). Les tuiles de carte sont fournies par MapTiler (données OpenStreetMap) lorsque la clé est configurée.",
           "Lorsque vous cliquez sur « Y aller », vous quittez CarbuTarn pour un service de cartographie tiers (Google Maps ou Apple Plans), soumis à leurs conditions.",
         ],
       },
@@ -128,9 +129,9 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         heading: "Durées de conservation",
         paragraphs: [
           "Tokens de lien magique : environ 15 minutes, puis invalidés ou expirés.",
-          "Cookie / session : jusqu’à environ 30 jours, ou jusqu’à déconnexion.",
-          "Compte (e-mail, identifiant) et signalements associés : conservés tant que le compte est actif, ou jusqu’à demande de suppression.",
-          "Position GPS en mémoire navigateur (hors signalement) : durée de la session d’onglet.",
+          "Cookie / session : jusqu’à environ 7 jours, ou jusqu’à déconnexion (invalidation serveur).",
+          "Compte (e-mail, identifiant) et signalements associés : conservés tant que le compte est actif, ou jusqu’à suppression depuis l’application (ou demande à hexadecodeur@gmail.com).",
+          "Position GPS en mémoire navigateur : durée de la session d’onglet ; jamais stockée côté serveur.",
           "Préférences et caches locaux : jusqu’à effacement des données du site ou expiration (cache enseignes : 24 h).",
         ],
       },
@@ -138,7 +139,7 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         heading: "Vos droits (RGPD)",
         paragraphs: [
           "Conformément au RGPD et à la loi Informatique et Libertés, vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, d’opposition et de portabilité, dans les conditions prévues par la loi.",
-          "Pour exercer ces droits (y compris la suppression de votre compte et des données associées) ou poser une question relative aux données, contactez Hexa Décodeur à hexadecodeur@gmail.com.",
+          "Vous pouvez supprimer votre compte et les signalements associés directement depuis l’application (lien « Supprimer le compte »). Vous pouvez aussi contacter Hexa Décodeur à hexadecodeur@gmail.com.",
           "Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr).",
         ],
       },
@@ -203,7 +204,7 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         heading: "Résiliation et suppression du compte",
         paragraphs: [
           "Vous pouvez vous déconnecter à tout moment depuis l’application.",
-          "Pour demander la suppression de votre compte et des données personnelles associées, contactez hexadecodeur@gmail.com. L’éditeur s’efforcera de traiter la demande dans un délai raisonnable, sous réserve des obligations légales de conservation éventuelles.",
+          "Vous pouvez supprimer votre compte et les données personnelles associées depuis l’application (« Supprimer le compte »). Vous pouvez aussi contacter hexadecodeur@gmail.com. L’éditeur s’efforcera de traiter toute demande complémentaire dans un délai raisonnable, sous réserve des obligations légales de conservation éventuelles.",
         ],
       },
       {

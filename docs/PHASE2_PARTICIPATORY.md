@@ -43,25 +43,34 @@ Front ──POST /api/stations/:id/reports (cookie) ──► reports
 
 ## Règles anti-abus (MVP)
 
-1. Compte via magic link (session cookie `HttpOnly`)
-2. 1 signalement / station / carburant / 2 h / compte
-3. Fourchette ±10 % du prix officiel si correction
-4. Géofence soft : poids ×2 si GPS ≤ 500 m de la station (jamais bloquant)
-5. Consensus 48 h : regrouper les prix à ±0,010 €/L ; publier la médiane du meilleur groupe dès poids effectif ≥ 3
-6. Réputation / modération = V2
+1. Compte via magic link (session cookie `HttpOnly`, TTL 7 j, `session_version` révocable)
+2. Rate limit magic-link (3 / e-mail / 15 min, 10 / IP / h) + Turnstile en prod
+3. 1 signalement / station / carburant / bucket 2 h / compte (contrainte unique SQL)
+4. Fourchette ±10 % du prix officiel si correction
+5. Poids fixe 1 (GPS client non crédité — spoofable)
+6. Consensus 48 h : regrouper les prix à ±0,010 €/L ; publier dès poids ≥ 3
+7. Prix non publiés : absents du JSON public
+8. Réputation / géofence attestée = V2
 
 ## Endpoints
 
 | Méthode | Chemin | Auth |
 |---------|--------|------|
-| `POST` | `/api/auth/magic-link` | Non — `{ email }` |
-| `GET` | `/api/auth/verify?token=` | Non — pose le cookie, redirect |
+| `POST` | `/api/auth/magic-link` | Non — `{ email, turnstileToken? }` + RL |
+| `GET` | `/api/auth/verify?token=` | Non — redirige vers `#connexion-token=` (ne consomme pas) |
+| `POST` | `/api/auth/verify` | Non — `{ token }` pose le cookie |
 | `GET` | `/api/auth/me` | Cookie |
-| `POST` | `/api/auth/logout` | Cookie |
+| `POST` | `/api/auth/logout` | Cookie — bump `session_version` |
+| `DELETE` | `/api/auth/account` | Cookie — suppression compte + reports |
+| `GET` | `/api/stations` | Non — proxy Open Data |
 | `GET` | `/api/stations/:id/prices` | Optionnel |
-| `POST` | `/api/stations/:id/reports` | Cookie — `{ fuelType, agreed, price?, lat?, lon? }` |
-| `GET` | `/api/cron/sync-official` | Header `Authorization: Bearer CRON_SECRET` |
+| `POST` | `/api/stations/:id/reports` | Cookie — `{ fuelType, agreed, price? }` |
+| `GET` | `/api/cities?q=` | Non — proxy geo.api |
+| `GET` | `/api/cron/sync-official` | `Authorization: Bearer CRON_SECRET` uniquement |
 | `GET` | `/api/health` | Non |
+
+Stores / packaging : [STORE_SECURITY.md](./STORE_SECURITY.md).
+
 
 ## Structure code
 
