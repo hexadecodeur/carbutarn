@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
+import AccountMenu from "./components/AccountMenu"
 import AuthModal from "./components/AuthModal"
 import BrandMark from "./components/BrandMark"
+import CookieBanner from "./components/CookieBanner"
 import LegalModal from "./components/LegalModal"
 import MyReportsModal from "./components/MyReportsModal"
 import StationMap, { type StationMapHandle } from "./components/StationMap"
@@ -117,6 +119,7 @@ function App() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [brandFilter, setBrandFilter] = useState<string | null>(null)
   const [myReportsOpen, setMyReportsOpen] = useState(false)
+  const [cookieBannerReopen, setCookieBannerReopen] = useState(0)
   const [sharedPrices, setSharedPrices] = useState<ObservedMapPrice[]>([])
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() =>
     typeof window !== "undefined" ? loadRecentSearches() : [],
@@ -381,6 +384,34 @@ function App() {
     onPullEnd: onListOverscrollPullEnd,
   }
 
+  function handleDeleteAccount() {
+    const ok = window.confirm(
+      "Supprimer définitivement ton compte CarbuTarn et tes signalements ?",
+    )
+    if (!ok) return
+    void deleteAccount().catch((error) => {
+      console.error("Suppression impossible :", error)
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible de supprimer le compte.",
+      )
+    })
+  }
+
+  const accountMenuProps = {
+    user: authUser,
+    authLoading,
+    onOpenAuth: openAuth,
+    onLogout: () => {
+      void logout()
+    },
+    onDeleteAccount: handleDeleteAccount,
+    onOpenMyReports: () => {
+      setMyReportsOpen(true)
+    },
+  }
+
   const panelProps = {
     stations: sortedStations,
     loading,
@@ -397,35 +428,15 @@ function App() {
     userLocation: referenceLocation,
     onCloseDetails: closeDetails,
     onOpenLegal: openLegal,
+    onManageCookies: () => {
+      setCookieBannerReopen((n) => n + 1)
+    },
     onRetry: loadError ? retryLoadStations : undefined,
     brandFilter,
     onClearBrandFilter: clearBrandFilter,
     authUser,
-    authLoading,
     onOpenAuth: openAuth,
-    onLogout: () => {
-      void logout()
-    },
     onAuthExpired: clearSession,
-    onDeleteAccount: () => {
-      const ok = window.confirm(
-        "Supprimer définitivement ton compte CarbuTarn et tes signalements ?",
-      )
-      if (!ok) return
-      void deleteAccount().catch((error) => {
-        console.error("Suppression impossible :", error)
-        window.alert(
-          error instanceof Error
-            ? error.message
-            : "Impossible de supprimer le compte.",
-        )
-      })
-    },
-    onOpenMyReports: authUser
-      ? () => {
-          setMyReportsOpen(true)
-        }
-      : undefined,
   }
 
   function renderSearchBar(inputId: string) {
@@ -578,7 +589,7 @@ function App() {
         >
           <div className="mb-2.5 flex items-center gap-2.5">
             <BrandMark className="h-9 w-9 shrink-0" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="font-display text-lg font-extrabold leading-none tracking-tight text-ink">
                 CarbuTarn
               </h1>
@@ -586,6 +597,7 @@ function App() {
                 Prix carburants · Tarn
               </p>
             </div>
+            <AccountMenu {...accountMenuProps} compact />
           </div>
           {renderSearchBar("place-search-mobile")}
         </div>
@@ -607,6 +619,7 @@ function App() {
           <div className="relative z-50 max-w-md flex-1">
             {renderSearchBar("place-search-desktop")}
           </div>
+          <AccountMenu {...accountMenuProps} />
         </div>
       </header>
 
@@ -716,6 +729,11 @@ function App() {
           </aside>
         </div>
       </div>
+
+      <CookieBanner
+        reopenToken={cookieBannerReopen}
+        onOpenPrivacy={() => openLegal("confidentialite")}
+      />
 
       {legalDocId && (
         <LegalModal

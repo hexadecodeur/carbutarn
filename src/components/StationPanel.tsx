@@ -35,18 +35,15 @@ type StationPanelProps = {
   userLocation: UserLocation | null
   onCloseDetails: () => void
   onOpenLegal: (id: LegalDocId) => void
+  onManageCookies?: () => void
   onRetry?: () => void
   /** Filtre enseigne actif (affiché en chip) */
   brandFilter?: string | null
   onClearBrandFilter?: () => void
   authUser?: AuthUser | null
-  authLoading?: boolean
   onOpenAuth?: () => void
-  onLogout?: () => void
   onAuthExpired?: () => void
-  onDeleteAccount?: () => void
-  onOpenMyReports?: () => void
-  /** Affiche le footer (légal + thème). Desktop: toujours ; mobile: si fusionné */
+  /** Affiche le footer légal. Desktop: toujours ; mobile: si fusionné */
   showFooter?: boolean
   /** Zone de resize mobile (détails) */
   detailsDragHandle?: ReactNode
@@ -72,16 +69,13 @@ function StationPanel({
   userLocation,
   onCloseDetails,
   onOpenLegal,
+  onManageCookies,
   onRetry,
   brandFilter = null,
   onClearBrandFilter,
   authUser = null,
-  authLoading = false,
   onOpenAuth,
-  onLogout,
   onAuthExpired,
-  onDeleteAccount,
-  onOpenMyReports,
   showFooter = true,
   detailsDragHandle,
   listChromeDragProps,
@@ -200,13 +194,8 @@ function StationPanel({
         {showFooter && (
           <AppFooter
             onOpen={onOpenLegal}
+            onManageCookies={onManageCookies}
             compact
-            user={authUser}
-            authLoading={authLoading}
-            onOpenAuth={onOpenAuth}
-            onLogout={onLogout}
-            onDeleteAccount={onDeleteAccount}
-            onOpenMyReports={onOpenMyReports}
           />
         )}
       </div>
@@ -218,6 +207,7 @@ function StationPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
+      {/* Zone de resize : poignée + titre + filtres (pas la liste) */}
       <div
         {...listChromeDragProps}
         className="shrink-0 touch-none border-b border-line/80 bg-surface select-none"
@@ -261,17 +251,15 @@ function StationPanel({
             </p>
           )}
 
-          <div className="touch-auto">
-            <StationFilters
-              selectedFuel={selectedFuel}
-              sortBy={sortBy}
-              priceOrder={priceOrder}
-              mapPriceSource={mapPriceSource}
-              onSelectedFuelChange={onSelectedFuelChange}
-              onSortByChange={onSortByChange}
-              onMapPriceSourceChange={onMapPriceSourceChange}
-            />
-          </div>
+          <StationFilters
+            selectedFuel={selectedFuel}
+            sortBy={sortBy}
+            priceOrder={priceOrder}
+            mapPriceSource={mapPriceSource}
+            onSelectedFuelChange={onSelectedFuelChange}
+            onSortByChange={onSortByChange}
+            onMapPriceSourceChange={onMapPriceSourceChange}
+          />
         </div>
       </div>
 
@@ -292,13 +280,8 @@ function StationPanel({
       {showFooter && (
         <AppFooter
           onOpen={onOpenLegal}
+          onManageCookies={onManageCookies}
           compact
-          user={authUser}
-          authLoading={authLoading}
-          onOpenAuth={onOpenAuth}
-          onLogout={onLogout}
-          onDeleteAccount={onDeleteAccount}
-          onOpenMyReports={onOpenMyReports}
         />
       )}
     </div>

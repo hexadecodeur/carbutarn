@@ -88,7 +88,7 @@ L’IP de l’utilisateur n’est plus exposée directement à data.gouv / geo.a
 | E-mail | Oui (compte) | Oui | Non |
 | Identifiant utilisateur | Oui | Oui | Non |
 | Localisation précise | Non côté serveur (carte = appareil seulement) | — | Non |
-| Données d’utilisation | Non (pas d’analytics) | — | Non |
+| Données d’utilisation | Oui (Vercel Web Analytics + GA4 si consentement) | Non | Non (GA4 hors tracking pub) |
 
 Usage strings iOS (si géoloc native plus tard) :
 
@@ -99,7 +99,7 @@ Usage strings iOS (si géoloc native plus tard) :
 - Collecte : e-mail, ID compte, signalements (station / carburant / prix / horodatage).
 - Pas de vente de données.
 - Suppression de compte : in-app (« Supprimer le compte ») + e-mail support.
-- Partage : Vercel, Neon, Resend, Cloudflare Turnstile ; tuiles MapTiler si configuré.
+- Partage : Vercel (hébergement + Web Analytics), Google Analytics 4 (si consentement), Sentry (erreurs prod), Neon, Resend, Cloudflare Turnstile ; tuiles MapTiler si configuré.
 
 ## Checklist avant soumission
 

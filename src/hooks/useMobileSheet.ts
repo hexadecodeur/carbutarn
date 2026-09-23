@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react"
 
-export type SheetSnap = "peek" | "half" | "full"
+export type SheetSnap = "collapsed" | "peek" | "half" | "full"
+
+/** Hauteur minimale (poignée seule) en px */
+const COLLAPSED_PX = 28
 
 const SHEET_HEIGHT: Record<SheetSnap, string> = {
+  collapsed: `${COLLAPSED_PX}px`,
   peek: "30%",
   half: "50%",
   full: "100%",
@@ -11,7 +15,7 @@ const SHEET_HEIGHT: Record<SheetSnap, string> = {
 /** Au-delà de ce ratio, la feuille fusionne avec le header mobile */
 const SHEET_MERGE_RATIO = 0.88
 
-const SNAP_ORDER: SheetSnap[] = ["peek", "half", "full"]
+const SNAP_ORDER: SheetSnap[] = ["collapsed", "peek", "half", "full"]
 
 const LAUNCH_KEY = "carbutarn:has-launched"
 
@@ -31,10 +35,15 @@ function markLaunched() {
   }
 }
 
-function nearestSnap(ratio: number): SheetSnap {
-  if (ratio < 0.38) return "peek"
+function nearestSnap(ratio: number, heightPx: number): SheetSnap {
+  if (heightPx <= COLLAPSED_PX + 20 || ratio < 0.12) return "collapsed"
+  if (ratio < 0.4) return "peek"
   if (ratio < 0.72) return "half"
   return "full"
+}
+
+function minSheetHeight(layoutHeight: number) {
+  return Math.min(COLLAPSED_PX, layoutHeight)
 }
 
 export function useMobileSheet() {
@@ -42,6 +51,8 @@ export function useMobileSheet() {
     startY: number
     startHeight: number
     moved: boolean
+    deferred: boolean
+    target: HTMLElement
   } | null>(null)
   const listPullStartHeight = useRef<number | null>(null)
   const sheetHeightRef = useRef<number | null>(null)
@@ -91,7 +102,7 @@ export function useMobileSheet() {
     setSheetHeightPx(null)
   }
 
-  function shouldIgnoreSheetDrag(target: EventTarget | null) {
+  function isInteractiveTarget(target: EventTarget | null) {
     if (!(target instanceof Element)) return false
     const interactive = target.closest(
       "button, a, input, label, [role='tab']",
@@ -100,21 +111,38 @@ export function useMobileSheet() {
     return !interactive.hasAttribute("data-sheet-drag")
   }
 
-  function onSheetPointerDown(event: PointerEvent<HTMLElement>) {
-    if (shouldIgnoreSheetDrag(event.target)) return
+  function suppressNextClick() {
+    suppressSheetClickRef.current = true
+    const suppress = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      document.removeEventListener("click", suppress, true)
+    }
+    document.addEventListener("click", suppress, true)
+  }
 
-    const sheet = event.currentTarget.closest("[data-sheet]") as HTMLElement | null
+  function onSheetPointerDown(event: PointerEvent<HTMLElement>) {
+    const sheet = event.currentTarget.closest(
+      "[data-sheet]",
+    ) as HTMLElement | null
     if (!sheet) return
 
-    event.preventDefault()
+    const deferred = isInteractiveTarget(event.target)
     const startHeight = sheet.getBoundingClientRect().height
+
     sheetDrag.current = {
       startY: event.clientY,
       startHeight,
       moved: false,
+      deferred,
+      target: event.currentTarget,
     }
     sheetHeightRef.current = startHeight
-    event.currentTarget.setPointerCapture(event.pointerId)
+
+    if (!deferred) {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
   }
 
   function onSheetPointerMove(event: PointerEvent<HTMLElement>) {
@@ -127,13 +155,27 @@ export function useMobileSheet() {
 
     const delta = sheetDrag.current.startY - event.clientY
     if (Math.abs(delta) > 6) {
+      if (sheetDrag.current.deferred) {
+        sheetDrag.current.deferred = false
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        } catch {
+          /* ignore */
+        }
+        event.preventDefault()
+      }
       sheetDrag.current.moved = true
     }
+
+    if (sheetDrag.current.deferred) return
 
     const layoutHeight = layout.getBoundingClientRect().height
     const next = Math.min(
       layoutHeight,
-      Math.max(layoutHeight * 0.22, sheetDrag.current.startHeight + delta),
+      Math.max(
+        minSheetHeight(layoutHeight),
+        sheetDrag.current.startHeight + delta,
+      ),
     )
     sheetHeightRef.current = next
     setSheetHeightPx(next)
@@ -156,6 +198,7 @@ export function useMobileSheet() {
 
     if (didDrag) {
       finishSheetResize(height, layoutHeight)
+      suppressNextClick()
     }
 
     sheetDrag.current = null
@@ -170,13 +213,13 @@ export function useMobileSheet() {
       suppressSheetClickRef.current = false
       return
     }
-    if (shouldIgnoreSheetDrag(event.target)) return
+    if (isInteractiveTarget(event.target)) return
     cycleSheet()
   }
 
   function finishSheetResize(height: number, layoutHeight: number) {
     suppressSheetClickRef.current = true
-    setSheetSnap(nearestSnap(height / layoutHeight))
+    setSheetSnap(nearestSnap(height / layoutHeight, height))
     setSheetHeightPx(null)
     sheetHeightRef.current = null
   }
@@ -208,7 +251,7 @@ export function useMobileSheet() {
 
     const next = Math.min(
       layoutHeight,
-      Math.max(layoutHeight * 0.22, startHeight - deltaDown),
+      Math.max(minSheetHeight(layoutHeight), startHeight - deltaDown),
     )
     sheetHeightRef.current = next
     setSheetHeightPx(next)

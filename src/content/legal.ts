@@ -13,7 +13,7 @@ export const LEGAL_LINKS: { id: LegalDocId; label: string }[] = [
   { id: "cgu", label: "CGU" },
 ]
 
-const UPDATED_AT = "22 septembre 2026"
+const UPDATED_AT = "23 septembre 2026"
 
 export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
   mentions: {
@@ -100,21 +100,25 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDoc> = {
         paragraphs: [
           "La fourniture du service de consultation et du compte (lien magique, session, signalements) repose sur l’exécution de mesures précontractuelles ou contractuelles à votre demande, et/ou sur l’intérêt légitime de Hexa Décodeur à offrir et sécuriser le service.",
           "La géolocalisation pour centrer la carte repose sur votre consentement (permission du navigateur). Vous pouvez la refuser : l’application reste utilisable via la recherche de ville et le déplacement manuel de la carte.",
+          "Google Analytics 4 repose sur votre consentement (bandeau cookies). Vous pouvez refuser ou retirer ce consentement sans perdre l’accès au service.",
           "L’utilisation des API publiques nécessaires au fonctionnement repose sur l’intérêt légitime de fournir le service, dans le respect des conditions d’usage de ces API.",
         ],
       },
       {
         heading: "Cookies et traceurs",
         paragraphs: [
-          "CarbuTarn n’utilise pas de cookies publicitaires ni d’outil de mesure d’audience tiers.",
-          "Le cookie de session carbutarn_session est un cookie technique nécessaire à l’authentification. Aucun bandeau cookies n’est requis pour ce seul usage.",
-          "Le navigateur peut en outre conserver des données techniques locales (localStorage) décrites ci-dessus.",
+          "CarbuTarn n’utilise pas de cookies publicitaires.",
+          "Une mesure d’audience technique est réalisée via Vercel Web Analytics (prestataire d’hébergement) : pages vues, sans cookies publicitaires ni identifiant publicitaire. Elle sert à comprendre l’usage du service (intérêt légitime) et ne nécessite pas de consentement via le bandeau.",
+          "En production, des rapports d’erreurs techniques peuvent être envoyés à Sentry (intérêt légitime de stabilité du service). Aucune adresse e-mail, cookie de session, jeton de connexion, en-tête Authorization ni coordonnée GPS précise n’est volontairement transmise ; un filtre défensif nettoie ces données des événements.",
+          "Google Analytics 4 (Google Ireland / Google LLC) n’est activé qu’après ton consentement explicite via le bandeau « Mesure d’audience ». En cas de refus, le script n’est pas chargé. Tu peux modifier ton choix à tout moment via le lien « Cookies » en pied de page. L’adresse IP est anonymisée côté configuration lorsque le service est actif.",
+          "Le cookie de session carbutarn_session est un cookie technique nécessaire à l’authentification.",
+          "Le navigateur peut en outre conserver des données techniques locales (localStorage), y compris ton choix cookies (carbutarn:ga-consent), décrites ci-dessus.",
         ],
       },
       {
         heading: "Destinataires et sous-traitants",
         paragraphs: [
-          "Selon les traitements : Vercel (hébergement du site et de l’API), Neon (base de données), Resend (envoi des e-mails de lien magique), et éventuellement Cloudflare (Turnstile).",
+          "Selon les traitements : Vercel (hébergement du site, de l’API et mesure d’audience Web Analytics), Google (Google Analytics 4, uniquement si tu as accepté), Sentry (rapports d’erreurs techniques en production, sans adresse e-mail ni GPS volontairement transmis), Neon (base de données), Resend (envoi des e-mails de lien magique), et éventuellement Cloudflare (Turnstile).",
           "Des fournisseurs tiers peuvent être interrogés côté serveur pour le fonctionnement : data.economie.gouv.fr (prix officiels), geo.api.gouv.fr (communes). Les tuiles de carte sont fournies par MapTiler (données OpenStreetMap) lorsque la clé est configurée.",
           "Lorsque vous cliquez sur « Y aller », vous quittez CarbuTarn pour un service de cartographie tiers (Google Maps ou Apple Plans), soumis à leurs conditions.",
         ],
