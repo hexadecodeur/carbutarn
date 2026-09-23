@@ -135,10 +135,17 @@ export function initSentry() {
   Sentry.init({
     dsn: dsn.trim(),
     environment: "production",
-    sendDefaultPii: false,
+    // v11 : remplace sendDefaultPii:false (plus restrictif que les defaults v11)
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: false, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      genAI: { inputs: false, outputs: false },
+    },
     // Error Monitoring only — pas de tracing / replay / logs
     tracesSampleRate: 0,
-    enableLogs: false,
     integrations: (integrations) =>
       integrations.filter((integration) => {
         const name = integration.name
