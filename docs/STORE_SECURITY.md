@@ -28,7 +28,7 @@ Conséquences :
 MAPTILER_API_KEY=your_maptiler_key
 ```
 
-L’API expose `GET /api/map/tiles` → URL `streets-v2` + attribution. Sans clé : fallback OSM (dev seulement).
+L’API expose `GET /api/map/tiles` → URL `streets-v2` + attribution. Sans clé : fallback **Carto** (pas `tile.openstreetmap.org`, bloqué en prod).
 
 4. Ne pas activer `VITE_OSM_OVERPASS=1` en build store (snapshot `public/osm-brands-tarn.json` suffit).
 

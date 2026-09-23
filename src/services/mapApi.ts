@@ -1,13 +1,14 @@
 export type MapTilesConfig = {
   tileUrl: string
   attribution: string
-  provider: "maptiler" | "osm"
+  provider: "maptiler" | "carto"
 }
 
 const FALLBACK: MapTilesConfig = {
-  tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-  attribution: "© OpenStreetMap contributors",
-  provider: "osm",
+  tileUrl:
+    "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  attribution: "© OpenStreetMap © CARTO",
+  provider: "carto",
 }
 
 /** Tuiles via `/api/map/tiles` (MAPTILER_API_KEY côté serveur, pas de VITE_). */
@@ -25,7 +26,7 @@ export async function fetchMapTilesConfig(): Promise<MapTilesConfig> {
         typeof data.attribution === "string"
           ? data.attribution
           : FALLBACK.attribution,
-      provider: data.provider === "maptiler" ? "maptiler" : "osm",
+      provider: data.provider === "maptiler" ? "maptiler" : "carto",
     }
   } catch {
     return FALLBACK
