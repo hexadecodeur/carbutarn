@@ -7,6 +7,29 @@ import type { ObservedMapPrice } from "../services/participatoryApi"
 import { fetchMapTilesConfig } from "../services/mapApi"
 import { getFuelPriceRange, getPriceHeatColor } from "../utils/priceColor"
 
+function supportsWebGL2(): boolean {
+  try {
+    const canvas = document.createElement("canvas")
+    return Boolean(canvas.getContext("webgl2"))
+  } catch {
+    return false
+  }
+}
+
+function isGpuInitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const name = "name" in error ? String(error.name) : ""
+  const message = "message" in error ? String(error.message) : String(error)
+  return (
+    name === "GPUInitializationError" ||
+    /webgl2 is required/i.test(message) ||
+    /failed to initialize webgl/i.test(message)
+  )
+}
+
+const MAP_UNAVAILABLE_MESSAGE =
+  "La carte ne peut pas s’afficher sur cet appareil (WebGL2 indisponible). Utilise la liste des stations, ou ouvre CarbuTarn dans Chrome / Safari à jour."
+
 function readGeolocation(
   options: PositionOptions,
 ): Promise<GeolocationPosition> {
@@ -106,6 +129,7 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     const onLocateStatusRef = useRef(onLocateStatus)
     const onUserLocationChangeRef = useRef(onUserLocationChange)
     const [mapReady, setMapReady] = useState(false)
+    const [mapError, setMapError] = useState<string | null>(null)
 
     useEffect(() => {
       onLocateStatusRef.current = onLocateStatus
@@ -118,47 +142,84 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
     useEffect(() => {
       if (!mapContainer.current || map.current) return
 
+      if (!supportsWebGL2()) {
+        setMapError(MAP_UNAVAILABLE_MESSAGE)
+        return
+      }
+
       let cancelled = false
       const container = mapContainer.current
       let resizeObserver: ResizeObserver | null = null
 
-      void fetchMapTilesConfig().then((tiles) => {
-        if (cancelled || !container || map.current) return
+      void fetchMapTilesConfig()
+        .then((tiles) => {
+          if (cancelled || !container || map.current) return
 
-        map.current = new maplibregl.Map({
-          container,
+          try {
+            map.current = new maplibregl.Map({
+              container,
 
-          style: {
-            version: 8,
-            sources: {
-              basemap: {
-                type: "raster",
-                tiles: [tiles.tileUrl],
-                tileSize: 256,
-                attribution: tiles.attribution,
+              style: {
+                version: 8,
+                sources: {
+                  basemap: {
+                    type: "raster",
+                    tiles: [tiles.tileUrl],
+                    tileSize: 256,
+                    attribution: tiles.attribution,
+                  },
+                },
+                layers: [
+                  {
+                    id: "basemap",
+                    type: "raster",
+                    source: "basemap",
+                  },
+                ],
               },
-            },
-            layers: [
-              {
-                id: "basemap",
-                type: "raster",
-                source: "basemap",
-              },
-            ],
-          },
 
-          center: [2.148, 43.9298],
-          zoom: 12,
+              center: [2.148, 43.9298],
+              zoom: 12,
+            })
+          } catch (error) {
+            if (isGpuInitError(error)) {
+              setMapError(MAP_UNAVAILABLE_MESSAGE)
+              return
+            }
+            throw error
+          }
+
+          map.current.on("error", (event) => {
+            if (isGpuInitError(event.error)) {
+              setMapError(MAP_UNAVAILABLE_MESSAGE)
+              map.current?.remove()
+              map.current = null
+              setMapReady(false)
+            }
+          })
+
+          map.current.addControl(
+            new maplibregl.NavigationControl(),
+            "top-right",
+          )
+
+          resizeObserver = new ResizeObserver(() => {
+            map.current?.resize()
+          })
+          resizeObserver.observe(container)
+          setMapReady(true)
         })
-
-        map.current.addControl(new maplibregl.NavigationControl(), "top-right")
-
-        resizeObserver = new ResizeObserver(() => {
-          map.current?.resize()
+        .catch((error: unknown) => {
+          if (cancelled) return
+          if (isGpuInitError(error)) {
+            setMapError(MAP_UNAVAILABLE_MESSAGE)
+            return
+          }
+          console.error("Carte indisponible :", error)
+          setMapError(
+            "Impossible de charger la carte pour le moment. Réessaie plus tard ou utilise la liste.",
+          )
         })
-        resizeObserver.observe(container)
-        setMapReady(true)
-      })
 
       return () => {
         cancelled = true
@@ -428,7 +489,21 @@ const StationMap = forwardRef<StationMapHandle, StationMapProps>(
       },
     }))
 
-    return <div ref={mapContainer} className="h-full w-full" />
+    return (
+      <div className="relative h-full w-full">
+        <div ref={mapContainer} className="h-full w-full" />
+        {mapError && (
+          <div
+            role="alert"
+            className="absolute inset-0 z-10 flex items-center justify-center bg-paper/95 p-6 backdrop-blur-sm"
+          >
+            <p className="max-w-sm text-center text-sm leading-relaxed text-ink-soft">
+              {mapError}
+            </p>
+          </div>
+        )}
+      </div>
+    )
   },
 )
 
