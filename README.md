@@ -1,83 +1,429 @@
-# CarbuTarn
+# ⛽ CarbuTarn
 
-Application web cartographique pour consulter les prix des carburants dans le Tarn.
+**CarbuTarn** est une application web permettant de consulter et comparer les prix des carburants dans le **Tarn (81)**.
 
-Prix officiels (Open Data) + enseignes OpenStreetMap, et **prix constatés** via signalements authentifiés (magic link).
+Elle combine les **données publiques officielles** avec une couche participative permettant aux utilisateurs de confirmer un prix, signaler un prix constaté à la pompe ou indiquer une rupture.
 
-Prod : [carbutarn.vercel.app](https://carbutarn.vercel.app) · **handoff** : [docs/PROJECT_STATE.md](docs/PROJECT_STATE.md) · Phase 2 : [docs/PHASE2_PARTICIPATORY.md](docs/PHASE2_PARTICIPATORY.md) · en-têtes : [docs/DEPLOY_HEADERS.md](docs/DEPLOY_HEADERS.md) · stores / PWA : [docs/STORE_SECURITY.md](docs/STORE_SECURITY.md).
+👉 **Application en production :** https://carbutarn.vercel.app
+
+---
 
 ## Fonctionnalités
 
-- Carte interactive des stations-service du Tarn
-- Géolocalisation
-- Prix officiels (Open Data) + enseignes OSM (`ref:FR:prix-carburants`)
-- Adresse, services, horaires automate 24h
-- Recherche par ville (Tarn)
-- Classement distance / prix (Gazole, E10, SP98, E85)
-- Itinéraire « Y aller » (Google Maps / Apple Maps)
-- Prix constatés : connexion magic link, **Prix OK** / **Pas d’accord**, consensus serveur (groupe ±0,010 €/L, 3 avis, proche ×2)
-- Interface responsive
+- 🗺️ Carte interactive des stations-service du Tarn
+- 📍 Géolocalisation de l'utilisateur
+- 🔎 Recherche par commune
+- 💰 Comparaison des prix par carburant
+  - Gazole
+  - E10
+  - SP98
+  - E85
+- ↕️ Classement par prix ou distance
+- 🏪 Informations sur les stations :
+  - adresse
+  - enseigne
+  - services
+  - horaires / automate 24h
+- 🧭 Ouverture d'un itinéraire vers la station
+- 🕒 Affichage de la date de dernière mise à jour des prix
+- ⚠️ Signalement visuel des données anciennes
+- 👥 Prix constatés par la communauté
+- ✅ Confirmation d'un prix avec **Prix OK**
+- ✏️ Proposition d'un prix différent avec **Pas d'accord**
+- 🚫 Signalement d'une rupture
+- 🔐 Authentification sans mot de passe par magic link
+- 📱 Interface responsive et préparation PWA
 
-## Stack
+L'application reste utilisable sans compte pour consulter les stations et les prix.  
+L'authentification est principalement utilisée pour les fonctionnalités participatives.
 
-| Couche | Techno |
-|--------|--------|
-| Front | React · TypeScript · Vite · Tailwind · MapLibre |
-| API | Hono (serverless Vercel) · Neon Postgres · Drizzle · Resend |
-| Hébergement | Vercel (SPA + `api/index.js` + rewrite `/api/*` + cron) |
+---
 
-## Données
+## Stack technique
 
-| Source | Usage |
-|--------|--------|
-| [data.economie.gouv.fr](https://data.economie.gouv.fr) — flux prix carburants | Stations, adresses, prix, services (front + sync Neon) |
-| [OpenStreetMap](https://www.openstreetmap.org) (Overpass) | Enseignes / noms + coordonnées (écart &lt; 200 m) |
-| [geo.api.gouv.fr](https://geo.api.gouv.fr) | Communes du Tarn |
+| Couche | Technologies |
+| --- | --- |
+| Frontend | React · TypeScript · Vite · Tailwind CSS |
+| Cartographie | MapLibre GL |
+| API | Hono · TypeScript |
+| Base de données | PostgreSQL · Neon |
+| ORM | Drizzle ORM |
+| Authentification | Magic link · Resend |
+| Protection anti-abus | Cloudflare Turnstile · rate limiting |
+| Monitoring | Sentry |
+| Analytics | Vercel Analytics |
+| Hébergement | Vercel |
+
+---
 
 ## Architecture
 
+CarbuTarn utilise une architecture **same-origin** : le frontend n'interroge pas directement les différentes sources externes nécessaires au fonctionnement de l'application.
+
 ```text
-Open Data ──► fuelApi.ts (front)
-         └─► cron /api/cron/sync-official ──► Neon (official_prices)
-
-Overpass ──► osmBrands.ts
-geo.api   ──► cityApi.ts
-
-Front ──► /api/* (Hono) ──► magic link · reports · observed prices
+                    ┌──────────────────────┐
+                    │      React / Vite    │
+                    │       Frontend       │
+                    └──────────┬───────────┘
+                               │
+                            /api/*
+                               │
+                    ┌──────────▼───────────┐
+                    │      Hono API        │
+                    │   Vercel Serverless  │
+                    └─────┬─────────┬──────┘
+                          │         │
+                 ┌────────▼───┐  ┌──▼─────────────┐
+                 │   Neon     │  │ Sources externes│
+                 │ PostgreSQL │  │ Open Data / Map │
+                 └────────────┘  └─────────────────┘
 ```
 
-Entrée serverless : bundle versionné `api/index.js` + rewrite `vercel.json` (`/api/(.*)` → `/api/index`). **À committer** après changement serveur.
+Les stations consommées par le frontend passent notamment par :
 
-## Développement
+```text
+React
+  │
+  └──► /api/stations
+           │
+           ├──► données officielles synchronisées
+           └──► enrichissement des stations
+```
+
+La synchronisation des données officielles est également exécutée automatiquement par un cron Vercel.
+
+---
+
+## Données
+
+### Prix des carburants
+
+Les données officielles proviennent du jeu de données public français :
+
+**Prix des carburants en France — flux instantané**
+
+Source : DGCCRF / data.economie.gouv.fr.
+
+Ces données sont régulièrement synchronisées côté serveur puis utilisées par l'application.
+
+### Enseignes et informations complémentaires
+
+Certaines informations complémentaires concernant les stations peuvent provenir d'**OpenStreetMap**, notamment pour l'identification ou l'enrichissement des enseignes.
+
+### Communes
+
+La recherche des communes du Tarn repose sur les données de l'API géographique française.
+
+---
+
+## Fonctionnement participatif
+
+CarbuTarn permet de compléter les données officielles avec des observations faites directement par les utilisateurs.
+
+Pour une station et un carburant donnés, un utilisateur authentifié peut :
+
+- confirmer le prix affiché ;
+- indiquer qu'il n'est plus correct ;
+- saisir un prix constaté ;
+- signaler une rupture.
+
+Les signalements sont stockés séparément des prix officiels.
+
+Un mécanisme de consensus côté serveur permet ensuite de produire des **prix constatés** lorsqu'un nombre suffisant de signalements cohérents est disponible.
+
+Les prix officiels restent ainsi distincts des informations communautaires.
+
+---
+
+## Sécurité et protection contre les abus
+
+CarbuTarn étant une application publique proposant des contributions utilisateurs, plusieurs protections ont été mises en place.
+
+### Authentification
+
+L'authentification fonctionne par **magic link** envoyé par email via Resend.
+
+Les sessions utilisent des tokens signés et une version de session côté base de données permettant leur invalidation.
+
+### Magic links
+
+Les demandes de connexion disposent notamment de :
+
+- limitation des requêtes ;
+- protection par Cloudflare Turnstile en production ;
+- expiration des tokens ;
+- consommation atomique des tokens ;
+- stockage sous forme de hash.
+
+### Contributions
+
+Les signalements disposent de mécanismes anti-abus, notamment :
+
+- cooldown par utilisateur / station / carburant ;
+- contrainte d'unicité côté base de données ;
+- validation côté serveur ;
+- consolidation des signalements avant publication d'un prix constaté.
+
+### Données personnelles
+
+CarbuTarn applique une logique de minimisation des données.
+
+La géolocalisation sert notamment à calculer la proximité des stations, mais les coordonnées GPS précises ne sont pas conservées dans les nouveaux signalements.
+
+Les adresses IP utilisées pour certaines protections anti-abus ne sont pas conservées en clair.
+
+### Sécurité HTTP
+
+Le déploiement applique notamment :
+
+- Content Security Policy (CSP)
+- HSTS
+- `X-Content-Type-Options`
+- `X-Frame-Options`
+- `Referrer-Policy`
+- `Permissions-Policy`
+- limitation de la taille des requêtes API
+
+---
+
+## Résilience de la cartographie
+
+La carte interactive utilise **MapLibre GL** et nécessite WebGL2.
+
+La disponibilité de WebGL2 est vérifiée avant l'initialisation de la carte.
+
+Si le navigateur ou l'appareil ne permet pas son utilisation, CarbuTarn affiche un fallback dédié sans empêcher l'utilisateur d'accéder à la liste des stations.
+
+Les erreurs inattendues restent suivies via Sentry.
+
+---
+
+## Base de données
+
+Les principales tables sont :
+
+```text
+users
+magic_link_tokens
+stations_cache
+official_prices
+reports
+observed_prices
+```
+
+### `official_prices`
+
+Contient les prix provenant de la source officielle.
+
+### `reports`
+
+Contient les observations et confirmations envoyées par les utilisateurs.
+
+### `observed_prices`
+
+Contient les valeurs consolidées issues du système participatif.
+
+Cette séparation permet de ne jamais confondre directement une donnée officielle avec une observation communautaire.
+
+---
+
+## Développement local
+
+### Prérequis
+
+- Node.js
+- pnpm
+- PostgreSQL / Neon
+
+### Installation
 
 ```bash
+git clone https://github.com/hexadecodeur/carbutarn.git
+cd carbutarn
+
 pnpm install
-cp .env.example .env.local   # Neon + Resend + secrets
-pnpm db:push                 # schéma Postgres
-pnpm dev:api                 # API http://localhost:8787
-pnpm dev                     # Vite (proxy /api → :8787)
+cp .env.example .env.local
 ```
 
-Autres scripts :
+Configurer ensuite les variables d'environnement nécessaires.
+
+### Base de données
 
 ```bash
-pnpm sync:official   # sync Open Data → Neon (local)
-pnpm bundle:api      # régénère api/index.js
-pnpm db:studio       # Drizzle Studio
+pnpm db:push
 ```
 
-Health check local : [http://localhost:8787/api/health](http://localhost:8787/api/health).
+### API
 
-## Déploiement Vercel
+```bash
+pnpm dev:api
+```
 
-1. Repo connecté + variables de `.env.example` (dont `APP_URL` = URL prod)
-2. Neon (marketplace) + domaine Resend pour `EMAIL_FROM`
-3. Deploy Git — le build lance Vite + `bundle-api`
-4. Vérifier [GET /api/health](https://carbutarn.vercel.app/api/health)
-5. Premier sync : `GET /api/cron/sync-official` avec `Authorization: Bearer $CRON_SECRET` (cron Hobby : `0 4 * * *`)
+L'API locale est disponible sur :
 
-Après modif du code `server/` : `pnpm bundle:api` puis commit de `api/index.js`.
+```text
+http://localhost:8787
+```
 
-## Licence
+Health check :
 
-MIT — développé par Hexa Décodeur.
+```text
+GET /api/health
+```
+
+### Frontend
+
+Dans un second terminal :
+
+```bash
+pnpm dev
+```
+
+Vite utilise le proxy local pour transmettre les appels `/api/*` vers l'API.
+
+---
+
+## Scripts utiles
+
+```bash
+pnpm dev
+```
+
+Lance le frontend Vite.
+
+```bash
+pnpm dev:api
+```
+
+Lance l'API locale.
+
+```bash
+pnpm build
+```
+
+Compile TypeScript, construit le frontend et génère le bundle serverless.
+
+```bash
+pnpm bundle:api
+```
+
+Régénère le bundle API Vercel.
+
+```bash
+pnpm sync:official
+```
+
+Déclenche localement une synchronisation des données officielles vers Neon.
+
+```bash
+pnpm db:push
+```
+
+Synchronise le schéma Drizzle avec PostgreSQL.
+
+```bash
+pnpm db:studio
+```
+
+Ouvre Drizzle Studio.
+
+```bash
+pnpm icons
+```
+
+Génère les icônes utilisées pour la PWA.
+
+---
+
+## Déploiement
+
+CarbuTarn est actuellement déployé sur **Vercel**.
+
+Le build de production exécute :
+
+```bash
+pnpm build
+```
+
+qui réalise :
+
+```text
+TypeScript
+    ↓
+Vite build
+    ↓
+bundle API
+    ↓
+Vercel
+```
+
+Les routes `/api/*` sont redirigées vers l'entrée serverless Hono.
+
+La synchronisation automatique des prix officiels utilise un cron Vercel :
+
+```text
+0 4 * * *
+```
+
+Endpoint :
+
+```text
+/api/cron/sync-official
+```
+
+L'accès au cron est protégé par un secret côté serveur.
+
+---
+
+## PWA / mobile
+
+CarbuTarn est conçu en priorité pour une utilisation mobile.
+
+Le projet comprend notamment :
+
+- manifest web ;
+- icônes dédiées ;
+- service worker ;
+- affichage standalone ;
+- préparation d'un packaging Android basé sur une approche PWA/TWA.
+
+L'objectif est de conserver autant que possible la même application web et la même origine pour les versions navigateur et mobile.
+
+---
+
+## Monitoring
+
+La production est surveillée avec :
+
+- **Sentry** pour le suivi des erreurs frontend ;
+- **Vercel** pour les erreurs et logs serverless ;
+- **Vercel Analytics** pour les statistiques d'utilisation.
+
+---
+
+## Sources et licences des données
+
+CarbuTarn utilise plusieurs sources externes dont les conditions et licences restent propres à leurs fournisseurs.
+
+### Données carburants
+
+DGCCRF — Prix des carburants en France  
+Licence Ouverte 2.0 (Etalab)
+
+### OpenStreetMap
+
+Les données OpenStreetMap sont mises à disposition sous licence ODbL.
+
+### Code source
+
+Le code de CarbuTarn est distribué sous licence **MIT**.
+
+---
+
+## Auteur
+
+Développé par **Hexa Décodeur**.
+
+🌐 https://hexadecodeur.fr
+
+Projet développé dans le Tarn, avec l'objectif de construire un outil local simple, gratuit et sans publicité.
