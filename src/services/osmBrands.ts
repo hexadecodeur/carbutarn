@@ -10,10 +10,23 @@ const OVERPASS_ENDPOINTS = [
 ]
 
 const FETCH_TIMEOUT_MS = 12_000
-const CACHE_KEY = "carbutarn-osm-brands-v1"
+/** Bump si corrections d’enseignes doivent invalider le cache navigateur. */
+const CACHE_KEY = "carbutarn-osm-brands-v2"
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 // 24h
 /** Snapshot local si Overpass est saturé (généré via scripts/fetch-osm-brands.mjs) */
 const STATIC_BRANDS_URL = "/osm-brands-tarn.json"
+
+/**
+ * Corrections locales quand OSM / Open Data ont une enseigne fausse.
+ * Clé = ref:FR:prix-carburants (= id Open Data).
+ */
+const BRAND_OVERRIDES: Record<
+  string,
+  { brand: string; name?: string }
+> = {
+  // Avenue Auguste Milhes, 81370 Saint-Sulpice-la-Pointe — OSM taguait « Esso »
+  "81370003": { brand: "Station du Parc", name: "Station du Parc" },
+}
 
 /** Bounding box approximative du département du Tarn */
 const TARN_BBOX = {
@@ -151,6 +164,21 @@ function saveCachedBrands(brands: Map<string, StationOsmInfo>) {
   }
 }
 
+function applyBrandOverrides(
+  brands: Map<string, StationOsmInfo>,
+): Map<string, StationOsmInfo> {
+  for (const [ref, override] of Object.entries(BRAND_OVERRIDES)) {
+    const existing = brands.get(ref)
+    brands.set(ref, {
+      brand: override.brand,
+      name: override.name ?? override.brand,
+      latitude: existing?.latitude ?? null,
+      longitude: existing?.longitude ?? null,
+    })
+  }
+  return brands
+}
+
 async function loadStaticBrands(): Promise<Map<string, StationOsmInfo> | null> {
   try {
     const response = await fetch(STATIC_BRANDS_URL)
@@ -173,7 +201,7 @@ async function loadStaticBrands(): Promise<Map<string, StationOsmInfo> | null> {
         longitude: info.lon ?? null,
       })
     }
-    return brands.size > 0 ? brands : null
+    return brands.size > 0 ? applyBrandOverrides(brands) : null
   } catch {
     return null
   }
@@ -217,6 +245,7 @@ export async function fetchStationBrands(
 
   const cached = loadCachedBrands()
   if (cached && cached.size > 0) {
+    const corrected = applyBrandOverrides(cached)
     if (allowOverpass) {
       void refreshBrandsFromOverpass()
         .then((fresh) => {
@@ -226,7 +255,7 @@ export async function fetchStationBrands(
           /* déjà en cache */
         })
     }
-    return cached
+    return corrected
   }
 
   const staticBrands = await loadStaticBrands()
@@ -248,7 +277,7 @@ export async function fetchStationBrands(
     return refreshBrandsFromOverpass()
   }
 
-  return new Map()
+  return applyBrandOverrides(new Map())
 }
 
 async function refreshBrandsFromOverpass(): Promise<
@@ -268,7 +297,7 @@ async function refreshBrandsFromOverpass(): Promise<
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const brands = await fetchFromEndpoint(endpoint, body)
+      const brands = applyBrandOverrides(await fetchFromEndpoint(endpoint, body))
       if (brands.size > 0) {
         saveCachedBrands(brands)
         return brands
@@ -288,8 +317,10 @@ export function enrichStationsWithBrands(
   stations: Station[],
   brands: Map<string, StationOsmInfo>,
 ): Station[] {
+  const resolved = applyBrandOverrides(new Map(brands))
+
   return stations.map((station) => {
-    const info = brands.get(station.id)
+    const info = resolved.get(station.id)
     if (!info) return station
 
     const brand = info.brand

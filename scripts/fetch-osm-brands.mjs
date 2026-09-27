@@ -41,6 +41,17 @@ for (const url of urls) {
         lon: e.lon ?? e.center?.lon ?? null,
       }
     }
+    // Corrections locales (OSM parfois faux) — garder sync avec src/services/osmBrands.ts
+    const overrides = {
+      "81370003": {
+        brand: "Station du Parc",
+        name: "Station du Parc",
+      },
+    }
+    for (const [ref, patch] of Object.entries(overrides)) {
+      if (!map[ref]) continue
+      map[ref] = { ...map[ref], ...patch }
+    }
     const { writeFile } = await import("node:fs/promises")
     await writeFile("public/osm-brands-tarn.json", JSON.stringify(map), "utf8")
     console.log(
